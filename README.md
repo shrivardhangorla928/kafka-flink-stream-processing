@@ -6,7 +6,7 @@ Prometheus/Grafana observability.
 
 Dissertation project for BITS Pilani WILP M.Tech (Cloud Computing) —
 *DevOps Automation with Scalable Services, Real-Time Monitoring, and Stream Processing*
-(Course CCZG628T, BITS ID 2024MT03552), carried out at VassarLabs, Hyderabad.
+(Course CCZG628T, BITS ID 2024MT03552).
 
 ---
 
