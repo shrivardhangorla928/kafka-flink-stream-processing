@@ -235,37 +235,50 @@ pipeline {
                 sh '''
                     set -eu
 
+                    pg() {
+                        kubectl -n $K8S_NAMESPACE exec postgres-0 -- \
+                          psql -U stream -d stream -tAc "$1" 2>/dev/null | tr -d "[:space:]"
+                    }
+
+                    # Baseline BEFORE the burst. Asserting count(*) > 0 afterwards would
+                    # pass on rows left by any earlier run, so it proves the table is
+                    # non-empty and nothing about whether this deployment moves data.
+                    # The check has to be that the count GREW.
+                    before=$(pg 'SELECT count(*) FROM station_window_aggregates;')
+                    echo "--- aggregates before the burst: ${before:-0}"
+
                     echo "--- force a burst rather than waiting out a 5-minute window"
                     curl -fsS -XPOST "http://$MINIKUBE_IP:$INGEST_NODEPORT/api/v1/telemetry/simulate/burst?stormStations=12"
+                    echo
 
                     # Window (5 min) + bounded out-of-orderness (30s) + one scrape
                     # interval, because Flink's watermark is data-driven: the window
                     # fires only once a later reading actually arrives. That measured
                     # behaviour is why this waits minutes rather than seconds.
-                    echo "--- waiting for the window to fire and alerts to land"
-                    deadline=$(( $(date +%s) + 420 ))
-                    aggregates=0
+                    echo "--- waiting for a NEW window to fire"
+                    deadline=$(( $(date +%s) + 480 ))
+                    after="${before:-0}"
                     while [ "$(date +%s)" -lt "$deadline" ]; do
-                        aggregates=$(kubectl -n $K8S_NAMESPACE exec postgres-0 -- \
-                          psql -U stream -d stream -tAc \
-                          'SELECT count(*) FROM station_window_aggregates;' 2>/dev/null | tr -d "[:space:]" || echo 0)
-                        [ "${aggregates:-0}" -gt 0 ] && break
-                        sleep 15
+                        after=$(pg 'SELECT count(*) FROM station_window_aggregates;')
+                        echo "    aggregates=${after:-0} (baseline ${before:-0})"
+                        [ "${after:-0}" -gt "${before:-0}" ] && break
+                        sleep 20
                     done
 
                     echo "--- pipeline output"
                     kubectl -n $K8S_NAMESPACE exec postgres-0 -- \
                       psql -U stream -d stream -c \
-                      'SELECT count(*) AS aggregates FROM station_window_aggregates;'
+                      'SELECT count(*) AS aggregates, max(window_end) AS latest_window FROM station_window_aggregates;'
                     kubectl -n $K8S_NAMESPACE exec postgres-0 -- \
                       psql -U stream -d stream -c \
                       'SELECT severity, count(*), max(generated_at) FROM alerts GROUP BY severity ORDER BY 1;'
 
-                    if [ "${aggregates:-0}" -eq 0 ]; then
-                        echo "FAIL: no window ever produced an aggregate - the pipeline is not moving data."
+                    if [ "${after:-0}" -le "${before:-0}" ]; then
+                        echo "FAIL: no new window produced an aggregate within the deadline."
+                        echo "      before=${before:-0} after=${after:-0} - this deployment is not moving data."
                         exit 1
                     fi
-                    echo "PASS: $aggregates aggregate rows persisted."
+                    echo "PASS: aggregates grew ${before:-0} -> ${after:-0} after this build's burst."
 
                     echo "--- the alert query API answers"
                     curl -fsS "http://$MINIKUBE_IP:$ALERT_NODEPORT/api/v1/alerts?size=5" | jq '{total: .totalElements}'
