@@ -4,12 +4,12 @@
          xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
     <modelVersion>4.0.0</modelVersion>
 
-    <groupId>com.vassar.aware</groupId>
-    <artifactId>aware-stream-platform</artifactId>
+    <groupId>com.stream.processing</groupId>
+    <artifactId>stream-processing</artifactId>
     <version>1.0.0-SNAPSHOT</version>
     <packaging>pom</packaging>
 
-    <name>AWARE Stream Platform</name>
+    <name>Stream Processing</name>
     <description>
         Event-driven scrape - aggregate - alert pipeline built on Kafka and Apache Flink.
         Dissertation project: DevOps Automation with Scalable Services, Real-Time Monitoring
@@ -84,7 +84,7 @@
             </dependency>
 
             <dependency>
-                <groupId>com.vassar.aware</groupId>
+                <groupId>com.stream.processing</groupId>
                 <artifactId>common-model</artifactId>
                 <version>${project.version}</version>
             </dependency>

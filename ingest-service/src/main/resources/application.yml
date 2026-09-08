@@ -1,4 +1,4 @@
-# Ingest service - the scrape stage of the AWARE pipeline.
+# Ingest service - the scrape stage of the streaming pipeline.
 # Every operator-tunable number lives here and is bound onto a validated @ConfigurationProperties
 # class, so a bad value fails the container at start-up rather than at the first scrape.
 server:
@@ -21,7 +21,7 @@ spring:
       key-serializer: org.apache.kafka.common.serialization.StringSerializer
       value-serializer: org.springframework.kafka.support.serializer.JsonSerializer
 
-aware:
+stream:
   kafka:
     # Bounds the parallelism of every station-keyed operator downstream.
     partitions: 3
@@ -29,7 +29,7 @@ aware:
     replication-factor: 1
   ingest:
     scrape-interval-ms: 60000
-    source: AWARE_SIMULATOR
+    source: STREAM_SIMULATOR
     stations-resource: classpath:stations.json
     max-batch-size: 1000
     max-burst-storm-stations: 50
@@ -81,7 +81,7 @@ management:
 logging:
   level:
     root: INFO
-    com.vassar.aware: INFO
+    com.stream.processing: INFO
     # The producer logs its full effective configuration at INFO on every start; useful once,
     # noise thereafter.
     org.apache.kafka.clients.producer.ProducerConfig: WARN

@@ -5,13 +5,13 @@
     <modelVersion>4.0.0</modelVersion>
 
     <parent>
-        <groupId>com.vassar.aware</groupId>
-        <artifactId>aware-stream-platform</artifactId>
+        <groupId>com.stream.processing</groupId>
+        <artifactId>stream-processing</artifactId>
         <version>1.0.0-SNAPSHOT</version>
     </parent>
 
     <artifactId>common-model</artifactId>
-    <name>AWARE Common Model</name>
+    <name>Common Model</name>
     <description>Event contract shared by the ingest service, the Flink pipeline and the alert service.</description>
 
     <properties>

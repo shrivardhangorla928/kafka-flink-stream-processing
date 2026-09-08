@@ -4,7 +4,7 @@ kind: Kustomization
 # The base is the production-shaped variant: 3 Kafka brokers, replication factor 3,
 # 3 alert-service replicas. The `local` overlay shrinks it to fit a workstation
 # minikube; the `staging` overlay keeps the shape and enlarges the resources.
-namespace: aware
+namespace: stream
 
 resources:
   - namespace.yaml
@@ -20,5 +20,5 @@ labels:
   - includeSelectors: false
     includeTemplates: true
     pairs:
-      app.kubernetes.io/part-of: aware-stream-platform
+      app.kubernetes.io/part-of: stream-processing
       app.kubernetes.io/managed-by: kustomize

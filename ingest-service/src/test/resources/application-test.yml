@@ -5,13 +5,13 @@ spring:
   kafka:
     bootstrap-servers: ${spring.embedded.kafka.brokers:localhost:9092}
 
-aware:
+stream:
   kafka:
     partitions: 3
     replication-factor: 1
   ingest:
     scrape-interval-ms: 3600000
-    source: AWARE_SIMULATOR
+    source: STREAM_SIMULATOR
     max-batch-size: 100
     simulator:
       enabled: false
@@ -23,7 +23,7 @@ aware:
 logging:
   level:
     root: WARN
-    com.vassar.aware: INFO
+    com.stream.processing: INFO
     org.apache.kafka: ERROR
     kafka: ERROR
     org.apache.zookeeper: ERROR

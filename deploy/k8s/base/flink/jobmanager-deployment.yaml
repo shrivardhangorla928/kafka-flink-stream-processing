@@ -53,7 +53,7 @@ spec:
         # the log4j/logback files Flink's start scripts expect, which a bare
         # ConfigMap mount over /opt/flink/conf would hide.
         - name: flink-conf
-          image: aware/flink-pipeline:1.0.0
+          image: stream/flink-pipeline:1.0.0
           imagePullPolicy: IfNotPresent
           command:
             - /bin/bash
@@ -87,7 +87,7 @@ spec:
         # starting the job before the broker exists fills the JobManager log with
         # restart-strategy noise that hides real failures during a demo.
         - name: wait-for-kafka
-          image: aware/flink-pipeline:1.0.0
+          image: stream/flink-pipeline:1.0.0
           imagePullPolicy: IfNotPresent
           command:
             - /bin/bash
@@ -125,7 +125,7 @@ spec:
                 - ALL
       containers:
         - name: jobmanager
-          image: aware/flink-pipeline:1.0.0
+          image: stream/flink-pipeline:1.0.0
           imagePullPolicy: IfNotPresent
           # The image's ENTRYPOINT is Flink's docker-entrypoint.sh; these are its
           # arguments. Everything after the class name is passed to the job's
@@ -133,7 +133,7 @@ spec:
           args:
             - standalone-job
             - --job-classname
-            - com.vassar.aware.flink.TelemetryPipelineJob
+            - com.stream.processing.flink.TelemetryPipelineJob
             - --kafka.bootstrap.servers
             - kafka:9092
             - --source.start.offset

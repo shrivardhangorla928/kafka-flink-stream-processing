@@ -6,7 +6,7 @@ metadata:
     app.kubernetes.io/name: flink
     app.kubernetes.io/component: jobmanager
     # Selector handle for a future Prometheus Operator ServiceMonitor.
-    monitoring: aware
+    monitoring: stream
   annotations:
     prometheus.io/scrape: "true"
     prometheus.io/port: "9249"
@@ -47,7 +47,7 @@ metadata:
   labels:
     app.kubernetes.io/name: flink
     app.kubernetes.io/component: taskmanager
-    monitoring: aware
+    monitoring: stream
   annotations:
     prometheus.io/scrape: "true"
     prometheus.io/port: "9249"

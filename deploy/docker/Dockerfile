@@ -5,7 +5,7 @@
 # rather than three, and the dependency layer is shared and cached across all of them.
 #
 # Build context is the project root, e.g.:
-#   docker build -f deploy/docker/Dockerfile --target ingest -t aware/ingest-service:1.0.0 .
+#   docker build -f deploy/docker/Dockerfile --target ingest -t stream/ingest-service:1.0.0 .
 
 # ---------------------------------------------------------------------------
 # Stage 1 - dependency cache
@@ -49,14 +49,14 @@ RUN apt-get update \
  && apt-get install -y --no-install-recommends curl \
  && rm -rf /var/lib/apt/lists/*
 
-RUN groupadd --system --gid 1001 aware \
- && useradd --system --uid 1001 --gid aware --home-dir /app --no-create-home aware \
- && mkdir -p /app && chown aware:aware /app
+RUN groupadd --system --gid 1001 stream \
+ && useradd --system --uid 1001 --gid stream --home-dir /app --no-create-home stream \
+ && mkdir -p /app && chown stream:stream /app
 
 WORKDIR /app
-COPY --from=builder --chown=aware:aware /build/ingest-service/target/ingest-service.jar app.jar
+COPY --from=builder --chown=stream:stream /build/ingest-service/target/ingest-service.jar app.jar
 
-USER aware
+USER stream
 EXPOSE 8080
 
 # MaxRAMPercentage rather than a fixed -Xmx: the JVM then honours whatever limit the
@@ -74,14 +74,14 @@ RUN apt-get update \
  && apt-get install -y --no-install-recommends curl \
  && rm -rf /var/lib/apt/lists/*
 
-RUN groupadd --system --gid 1001 aware \
- && useradd --system --uid 1001 --gid aware --home-dir /app --no-create-home aware \
- && mkdir -p /app && chown aware:aware /app
+RUN groupadd --system --gid 1001 stream \
+ && useradd --system --uid 1001 --gid stream --home-dir /app --no-create-home stream \
+ && mkdir -p /app && chown stream:stream /app
 
 WORKDIR /app
-COPY --from=builder --chown=aware:aware /build/alert-service/target/alert-service.jar app.jar
+COPY --from=builder --chown=stream:stream /build/alert-service/target/alert-service.jar app.jar
 
-USER aware
+USER stream
 EXPOSE 8080
 
 ENV JAVA_OPTS="-XX:MaxRAMPercentage=75.0 -XX:+UseG1GC -XX:+ExitOnOutOfMemoryError -Djava.security.egd=file:/dev/./urandom"

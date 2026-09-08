@@ -63,7 +63,7 @@ spec:
         # Same reasoning as the JobManager: the entrypoint rewrites config.yaml in
         # place, so conf/ must be a writable copy of the image's own directory.
         - name: flink-conf
-          image: aware/flink-pipeline:1.0.0
+          image: stream/flink-pipeline:1.0.0
           imagePullPolicy: IfNotPresent
           command:
             - /bin/bash
@@ -93,7 +93,7 @@ spec:
               readOnly: true
       containers:
         - name: taskmanager
-          image: aware/flink-pipeline:1.0.0
+          image: stream/flink-pipeline:1.0.0
           imagePullPolicy: IfNotPresent
           args:
             - taskmanager

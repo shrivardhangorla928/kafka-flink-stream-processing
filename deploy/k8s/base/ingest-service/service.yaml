@@ -6,7 +6,7 @@ metadata:
     app.kubernetes.io/name: ingest-service
     app.kubernetes.io/component: api
     # Selector handle for a future Prometheus Operator ServiceMonitor.
-    monitoring: aware
+    monitoring: stream
   annotations:
     prometheus.io/scrape: "true"
     prometheus.io/port: "8080"

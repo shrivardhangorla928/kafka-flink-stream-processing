@@ -39,7 +39,7 @@ spec:
       terminationGracePeriodSeconds: 45
       securityContext:
         runAsNonRoot: true
-        # uid 1001 is the `aware` account created in the Dockerfile's alert stage.
+        # uid 1001 is the `stream` account created in the Dockerfile's alert stage.
         runAsUser: 1001
         runAsGroup: 1001
         fsGroup: 1001
@@ -88,7 +88,7 @@ spec:
               echo "postgres is accepting connections"
           envFrom:
             - secretRef:
-                name: aware-postgres
+                name: stream-postgres
           resources:
             requests:
               memory: 32Mi
@@ -103,7 +103,7 @@ spec:
               drop:
                 - ALL
         - name: wait-for-kafka
-          image: aware/alert-service:1.0.0
+          image: stream/alert-service:1.0.0
           imagePullPolicy: IfNotPresent
           command:
             - /bin/bash
@@ -140,7 +140,7 @@ spec:
                 - ALL
       containers:
         - name: alert-service
-          image: aware/alert-service:1.0.0
+          image: stream/alert-service:1.0.0
           imagePullPolicy: IfNotPresent
           ports:
             - name: http
@@ -154,12 +154,12 @@ spec:
             - name: SPRING_DATASOURCE_USERNAME
               valueFrom:
                 secretKeyRef:
-                  name: aware-postgres
+                  name: stream-postgres
                   key: POSTGRES_USER
             - name: SPRING_DATASOURCE_PASSWORD
               valueFrom:
                 secretKeyRef:
-                  name: aware-postgres
+                  name: stream-postgres
                   key: POSTGRES_PASSWORD
           resources:
             requests:

@@ -15,19 +15,19 @@ spring:
     name: alert-service
 
   datasource:
-    url: ${SPRING_DATASOURCE_URL:jdbc:postgresql://localhost:5433/aware}
-    username: ${SPRING_DATASOURCE_USERNAME:aware}
-    password: ${SPRING_DATASOURCE_PASSWORD:aware}
+    url: ${SPRING_DATASOURCE_URL:jdbc:postgresql://localhost:5433/stream}
+    username: ${SPRING_DATASOURCE_USERNAME:stream}
+    password: ${SPRING_DATASOURCE_PASSWORD:stream}
     driver-class-name: org.postgresql.Driver
     hikari:
-      pool-name: aware-alert-pool
+      pool-name: stream-alert-pool
 
       # ---------------------------------------------------------------------------------------
       # Pool sizing. Derived from the concurrent database users this service actually has, not
       # from Hikari's default of 10:
       #
       #   6  consumer threads that hold a connection for a whole batch transaction
-      #      (aware.alert.consumer.concurrency = 3 on alerts.generated.v1
+      #      (stream.alert.consumer.concurrency = 3 on alerts.generated.v1
       #       + 3 on telemetry.aggregated.v1 - one per partition on each topic)
       # + 12 headroom for concurrent web requests. Not 40 (the Tomcat ceiling): with
       #      open-in-view disabled a request holds a connection only for the duration of its
@@ -93,11 +93,11 @@ spring:
   kafka:
     bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:localhost:9092}
 
-aware:
+stream:
   alert:
     consume-aggregates:
       # The observability feed. Switch off to give the whole write budget to the alerting path.
-      enabled: ${AWARE_CONSUME_AGGREGATES:true}
+      enabled: ${STREAM_CONSUME_AGGREGATES:true}
     api:
       default-page-size: 50
       # Hard cap. A caller asking for size=100000 gets 200 rows; the listing endpoint must not be
@@ -148,7 +148,7 @@ management:
 
 logging:
   level:
-    com.vassar.aware: INFO
+    com.stream.processing: INFO
     # The consumer logs a line per dead-lettered record at ERROR; keeping the container itself at
     # WARN stops a rebalance storm from burying those lines.
     org.springframework.kafka.listener: WARN

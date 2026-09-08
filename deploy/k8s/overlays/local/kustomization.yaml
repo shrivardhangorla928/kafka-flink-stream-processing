@@ -4,25 +4,25 @@ kind: Kustomization
 # Workstation minikube: one node, one Kafka broker, everything shrunk to fit
 # alongside an IDE and a Jenkins container. Total pod requests are held at or
 # under 5 GiB / 2 CPU - the arithmetic is in deploy/k8s/README.md.
-namespace: aware
+namespace: stream
 
 resources:
   - ../../base
   - flink-ui-nodeport.yaml
 
 # imagePullPolicy is IfNotPresent throughout the base, which is what this overlay
-# needs: the three aware/* images are built straight into minikube's Docker daemon
+# needs: the three stream/* images are built straight into minikube's Docker daemon
 # and exist in no registry, so a pull would fail. Nothing to patch here - the
 # staging overlay is the one that changes it, to Always.
 
 # Declared so the Jenkins pipeline in phase 2 can retag a deploy without editing
-# YAML: `kustomize edit set image aware/ingest-service=aware/ingest-service:$BUILD`.
+# YAML: `kustomize edit set image stream/ingest-service=stream/ingest-service:$BUILD`.
 images:
-  - name: aware/ingest-service
+  - name: stream/ingest-service
     newTag: 1.0.0
-  - name: aware/alert-service
+  - name: stream/alert-service
     newTag: 1.0.0
-  - name: aware/flink-pipeline
+  - name: stream/flink-pipeline
     newTag: 1.0.0
 
 replicas:

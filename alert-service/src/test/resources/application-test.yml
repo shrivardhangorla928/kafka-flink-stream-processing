@@ -1,7 +1,7 @@
 # Test overlay on the production application.yml.
 #
 # Layered as a profile rather than as a second classpath application.yml on purpose: the real
-# file still supplies ddl-auto=validate, the Flyway settings and the aware.alert.* limits, so the
+# file still supplies ddl-auto=validate, the Flyway settings and the stream.alert.* limits, so the
 # tests exercise the same configuration the service is deployed with and only the endpoints of
 # the two external systems are swapped out.
 spring:
@@ -10,7 +10,7 @@ spring:
     # the intersection of the two dialects, so these tests run the exact DDL that production runs
     # rather than a Hibernate-generated approximation of it - which is the only way ddl-auto
     # validate proves anything.
-    url: jdbc:h2:mem:aware;MODE=PostgreSQL;DB_CLOSE_DELAY=-1;DB_CLOSE_ON_EXIT=FALSE
+    url: jdbc:h2:mem:stream;MODE=PostgreSQL;DB_CLOSE_DELAY=-1;DB_CLOSE_ON_EXIT=FALSE
     driver-class-name: org.h2.Driver
     username: sa
     password: ""

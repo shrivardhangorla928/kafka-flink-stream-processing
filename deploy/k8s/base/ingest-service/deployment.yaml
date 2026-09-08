@@ -38,7 +38,7 @@ spec:
       terminationGracePeriodSeconds: 45
       securityContext:
         runAsNonRoot: true
-        # uid 1001 is the `aware` account created in the Dockerfile's ingest stage.
+        # uid 1001 is the `stream` account created in the Dockerfile's ingest stage.
         runAsUser: 1001
         runAsGroup: 1001
         fsGroup: 1001
@@ -57,7 +57,7 @@ spec:
         # reports Ready before its broker exists will accept readings it cannot
         # publish.
         - name: wait-for-kafka
-          image: aware/ingest-service:1.0.0
+          image: stream/ingest-service:1.0.0
           imagePullPolicy: IfNotPresent
           command:
             - /bin/bash
@@ -94,7 +94,7 @@ spec:
                 - ALL
       containers:
         - name: ingest-service
-          image: aware/ingest-service:1.0.0
+          image: stream/ingest-service:1.0.0
           imagePullPolicy: IfNotPresent
           ports:
             - name: http

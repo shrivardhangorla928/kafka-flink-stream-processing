@@ -118,7 +118,7 @@ open http://localhost:8081
 | Ingest service | http://localhost:8091 |
 | Alert service | http://localhost:8092 |
 | Kafka (from the host) | `localhost:29092` |
-| PostgreSQL | `localhost:5433`, db/user/password `aware` |
+| PostgreSQL | `localhost:5433`, db/user/password `stream` |
 
 Host ports are shifted off the defaults because this workstation already runs a PostgreSQL on
 5432 and a Jenkins container on 8099.

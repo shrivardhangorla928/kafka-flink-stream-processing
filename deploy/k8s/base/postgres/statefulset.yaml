@@ -53,7 +53,7 @@ spec:
               protocol: TCP
           envFrom:
             - secretRef:
-                name: aware-postgres
+                name: stream-postgres
           env:
             # A subdirectory rather than the mount root: initdb refuses to run in a
             # directory that already contains anything, and a PVC mount point can.

@@ -10,7 +10,7 @@
 # Memory limits are set on every service. They add up to roughly 6.8 GiB, which leaves
 # headroom on a 16 GiB workstation that is also running an IDE and the Jenkins container.
 
-name: aware-stream-platform
+name: stream-processing
 
 x-restart: &restart
   restart: unless-stopped
@@ -22,7 +22,7 @@ services:
   # ---------------------------------------------------------------------------
   kafka:
     image: apache/kafka:3.9.1
-    container_name: aware-kafka
+    container_name: stream-kafka
     <<: *restart
     ports:
       - "29092:29092"
@@ -50,7 +50,7 @@ services:
       KAFKA_LOG_RETENTION_HOURS: 24
       KAFKA_AUTO_CREATE_TOPICS_ENABLE: "true"
       KAFKA_HEAP_OPTS: "-Xmx768m -Xms768m"
-      CLUSTER_ID: aware-stream-platform-01
+      CLUSTER_ID: stream-processing-01
     volumes:
       - kafka-data:/var/lib/kafka/data
     healthcheck:
@@ -71,7 +71,7 @@ services:
   # ---------------------------------------------------------------------------
   kafka-init:
     image: apache/kafka:3.9.1
-    container_name: aware-kafka-init
+    container_name: stream-kafka-init
     depends_on:
       kafka:
         condition: service_healthy
@@ -98,19 +98,19 @@ services:
   # ---------------------------------------------------------------------------
   postgres:
     image: postgres:16-alpine
-    container_name: aware-postgres
+    container_name: stream-postgres
     <<: *restart
     ports:
       - "5433:5432"
     environment:
-      POSTGRES_DB: aware
-      POSTGRES_USER: aware
-      POSTGRES_PASSWORD: aware
+      POSTGRES_DB: stream
+      POSTGRES_USER: stream
+      POSTGRES_PASSWORD: stream
       PGDATA: /var/lib/postgresql/data/pgdata
     volumes:
       - postgres-data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U aware -d aware"]
+      test: ["CMD-SHELL", "pg_isready -U stream -d stream"]
       interval: 10s
       timeout: 5s
       retries: 10
@@ -130,8 +130,8 @@ services:
       context: ../..
       dockerfile: deploy/docker/Dockerfile
       target: flinkjob
-    image: aware/flink-pipeline:1.0.0
-    container_name: aware-flink-jobmanager
+    image: stream/flink-pipeline:1.0.0
+    container_name: stream-flink-jobmanager
     <<: *restart
     ports:
       - "8081:8081"
@@ -158,8 +158,8 @@ services:
     mem_limit: 1300m
 
   taskmanager:
-    image: aware/flink-pipeline:1.0.0
-    container_name: aware-flink-taskmanager
+    image: stream/flink-pipeline:1.0.0
+    container_name: stream-flink-taskmanager
     <<: *restart
     depends_on:
       jobmanager:
@@ -182,8 +182,8 @@ services:
   # One-shot job submission into the session cluster.
   # ---------------------------------------------------------------------------
   flink-job-submitter:
-    image: aware/flink-pipeline:1.0.0
-    container_name: aware-flink-submitter
+    image: stream/flink-pipeline:1.0.0
+    container_name: stream-flink-submitter
     depends_on:
       jobmanager:
         condition: service_healthy
@@ -206,7 +206,7 @@ services:
         exec /opt/flink/bin/flink run \
           --jobmanager jobmanager:8081 \
           --detached \
-          --class com.vassar.aware.flink.TelemetryPipelineJob \
+          --class com.stream.processing.flink.TelemetryPipelineJob \
           /opt/flink/usrlib/flink-pipeline.jar \
           --kafka.bootstrap.servers kafka:9092 \
           --source.start.offset latest
@@ -220,8 +220,8 @@ services:
       context: ../..
       dockerfile: deploy/docker/Dockerfile
       target: ingest
-    image: aware/ingest-service:1.0.0
-    container_name: aware-ingest-service
+    image: stream/ingest-service:1.0.0
+    container_name: stream-ingest-service
     <<: *restart
     depends_on:
       kafka-init:
@@ -244,8 +244,8 @@ services:
       context: ../..
       dockerfile: deploy/docker/Dockerfile
       target: alert
-    image: aware/alert-service:1.0.0
-    container_name: aware-alert-service
+    image: stream/alert-service:1.0.0
+    container_name: stream-alert-service
     <<: *restart
     depends_on:
       postgres:
@@ -256,9 +256,9 @@ services:
       - "8092:8080"
     environment:
       KAFKA_BOOTSTRAP_SERVERS: kafka:9092
-      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/aware
-      SPRING_DATASOURCE_USERNAME: aware
-      SPRING_DATASOURCE_PASSWORD: aware
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/stream
+      SPRING_DATASOURCE_USERNAME: stream
+      SPRING_DATASOURCE_PASSWORD: stream
       SPRING_PROFILES_ACTIVE: docker
     healthcheck:
       test: ["CMD-SHELL", "curl -fsS http://localhost:8080/actuator/health/readiness >/dev/null || exit 1"]

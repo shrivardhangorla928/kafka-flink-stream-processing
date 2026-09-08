@@ -5,7 +5,7 @@ metadata:
   labels:
     app.kubernetes.io/name: alert-service
     app.kubernetes.io/component: api
-    monitoring: aware
+    monitoring: stream
   annotations:
     prometheus.io/scrape: "true"
     prometheus.io/port: "8080"

@@ -15,7 +15,7 @@ data:
   # stamps it into the log dir, and a broker whose id disagrees with its formatted
   # volume refuses to start. Keeping it in configuration rather than generating one
   # per pod is what makes the StatefulSet restart-safe.
-  CLUSTER_ID: aware-stream-platform-01
+  CLUSTER_ID: stream-processing-01
 
   # Combined mode: every pod is both a broker and a controller, so there is no
   # separate controller quorum to run and no ZooKeeper.

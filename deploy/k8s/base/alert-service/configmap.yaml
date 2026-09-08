@@ -8,8 +8,8 @@ metadata:
 data:
   KAFKA_BOOTSTRAP_SERVERS: kafka:9092
   # The URL is not a secret and belongs with the rest of the wiring; only the
-  # username and password come from the aware-postgres Secret.
-  SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/aware
+  # username and password come from the stream-postgres Secret.
+  SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/stream
 
   MANAGEMENT_ENDPOINT_HEALTH_PROBES_ENABLED: "true"
   MANAGEMENT_ENDPOINTS_WEB_EXPOSURE_INCLUDE: health,info,metrics,prometheus

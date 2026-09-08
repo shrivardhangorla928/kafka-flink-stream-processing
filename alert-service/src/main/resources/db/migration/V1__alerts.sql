@@ -1,4 +1,4 @@
--- AWARE alert store.
+-- Alert store.
 --
 -- Written in the SQL subset that PostgreSQL 16 and H2 2.x (MODE=PostgreSQL) both accept, so the
 -- repository tests run these exact migrations in-memory instead of testing a Hibernate-generated

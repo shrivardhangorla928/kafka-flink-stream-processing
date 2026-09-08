@@ -5,18 +5,18 @@
     <modelVersion>4.0.0</modelVersion>
 
     <parent>
-        <groupId>com.vassar.aware</groupId>
-        <artifactId>aware-stream-platform</artifactId>
+        <groupId>com.stream.processing</groupId>
+        <artifactId>stream-processing</artifactId>
         <version>1.0.0-SNAPSHOT</version>
     </parent>
 
     <artifactId>alert-service</artifactId>
-    <name>AWARE Alert Service</name>
+    <name>Alert Service</name>
     <description>Consumes generated alerts from Kafka, persists them and serves the query API.</description>
 
     <dependencies>
         <dependency>
-            <groupId>com.vassar.aware</groupId>
+            <groupId>com.stream.processing</groupId>
             <artifactId>common-model</artifactId>
         </dependency>
 

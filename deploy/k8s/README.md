@@ -1,6 +1,6 @@
 # Kubernetes deployment
 
-Kustomize manifests for the AWARE stream platform: Kafka in KRaft mode, PostgreSQL,
+Kustomize manifests for the stream processing pipeline: Kafka in KRaft mode, PostgreSQL,
 a Flink **application-mode** cluster running `TelemetryPipelineJob`, and the two
 Spring Boot services.
 
@@ -12,7 +12,7 @@ same in both, so a value that works in one is the value that works in the other.
 deploy/k8s/
   base/                          production-shaped: 3 brokers, RF 3, 3 alert replicas
     kustomization.yaml
-    namespace.yaml               namespace `aware`, Pod Security `restricted`
+    namespace.yaml               namespace `stream`, Pod Security `restricted`
     kafka/                       StatefulSet (KRaft combined mode), 2 Services, PDB,
                                  topic-provisioning Job + its ConfigMap
     postgres/                    StatefulSet, Secret, Service
@@ -78,7 +78,7 @@ working:
 
 ### 2. Build the three images into minikube's Docker daemon
 
-The `local` overlay uses `imagePullPolicy: IfNotPresent` and the `aware/*` images
+The `local` overlay uses `imagePullPolicy: IfNotPresent` and the `stream/*` images
 exist in no registry, so they have to be built inside the daemon the kubelet reads
 from. `eval $(minikube docker-env)` repoints your shell's Docker client at it:
 
@@ -86,11 +86,11 @@ from. `eval $(minikube docker-env)` repoints your shell's Docker client at it:
 cd <repo root>
 eval $(minikube docker-env)
 
-docker build -f deploy/docker/Dockerfile --target ingest   -t aware/ingest-service:1.0.0 .
-docker build -f deploy/docker/Dockerfile --target alert    -t aware/alert-service:1.0.0  .
-docker build -f deploy/docker/Dockerfile --target flinkjob -t aware/flink-pipeline:1.0.0 .
+docker build -f deploy/docker/Dockerfile --target ingest   -t stream/ingest-service:1.0.0 .
+docker build -f deploy/docker/Dockerfile --target alert    -t stream/alert-service:1.0.0  .
+docker build -f deploy/docker/Dockerfile --target flinkjob -t stream/flink-pipeline:1.0.0 .
 
-docker images | grep aware/          # all three must be listed here, not just locally
+docker images | grep stream/          # all three must be listed here, not just locally
 ```
 
 The Dockerfile compiles the whole Maven reactor once in a shared `builder` stage, so
@@ -103,7 +103,7 @@ Run `eval $(minikube docker-env -u)` to point your shell back at the host daemon
 ```bash
 kubectl apply -k deploy/k8s/overlays/local
 
-kubectl -n aware get pods -w
+kubectl -n stream get pods -w
 ```
 
 ### 4. Tear down
@@ -111,7 +111,7 @@ kubectl -n aware get pods -w
 ```bash
 kubectl delete -k deploy/k8s/overlays/local
 # PVCs created from volumeClaimTemplates are not deleted with the StatefulSet:
-kubectl -n aware delete pvc --all
+kubectl -n stream delete pvc --all
 ```
 
 ---
@@ -127,7 +127,7 @@ Differences from `local`: 3 Kafka brokers with replication factor 3 and
 `imagePullPolicy: Always`, and PodDisruptionBudgets on ingest-service,
 alert-service and the TaskManagers.
 
-It assumes a registry the cluster can pull `aware/*` from, and - see the scope
+It assumes a registry the cluster can pull `stream/*` from, and - see the scope
 boundaries - a StorageClass that can genuinely serve `ReadWriteMany`.
 
 ---
@@ -154,7 +154,7 @@ if you change the replication factor in `kafka-topics` while the completed Job s
 exists, delete it before re-applying:
 
 ```bash
-kubectl -n aware delete job kafka-topic-init --ignore-not-found
+kubectl -n stream delete job kafka-topic-init --ignore-not-found
 ```
 
 ---
@@ -174,18 +174,18 @@ MINIKUBE_IP=$(minikube ip)
 | Alert API | `http://$MINIKUBE_IP:30092` | `http://localhost:8092` |
 | Flink web UI | `http://$MINIKUBE_IP:30081` | `http://localhost:8081` |
 
-`minikube service -n aware ingest-service --url` prints the same thing and opens a
+`minikube service -n stream ingest-service --url` prints the same thing and opens a
 tunnel if the driver needs one.
 
 Anything without a NodePort - Kafka, PostgreSQL, the Prometheus endpoints - is
 reached by port-forward:
 
 ```bash
-kubectl -n aware port-forward svc/kafka                    9092:9092
-kubectl -n aware port-forward svc/postgres                 5433:5432
-kubectl -n aware port-forward svc/ingest-service           8091:80
-kubectl -n aware port-forward svc/alert-service            8092:80
-kubectl -n aware port-forward svc/flink-jobmanager         8081:8081
+kubectl -n stream port-forward svc/kafka                    9092:9092
+kubectl -n stream port-forward svc/postgres                 5433:5432
+kubectl -n stream port-forward svc/ingest-service           8091:80
+kubectl -n stream port-forward svc/alert-service            8092:80
+kubectl -n stream port-forward svc/flink-jobmanager         8081:8081
 ```
 
 Note that port-forwarding Kafka to the host gives you a *bootstrap* connection only:
@@ -194,7 +194,7 @@ host-side client will bootstrap and then fail to reach the partition leaders. Ru
 Kafka CLI tools inside the cluster instead:
 
 ```bash
-kubectl -n aware exec -it kafka-0 -- \
+kubectl -n stream exec -it kafka-0 -- \
   /opt/kafka/bin/kafka-topics.sh --bootstrap-server kafka:9092 --describe
 ```
 
@@ -205,7 +205,7 @@ kubectl -n aware exec -it kafka-0 -- \
 ### The topics exist with the right shape
 
 ```bash
-kubectl -n aware logs job/kafka-topic-init
+kubectl -n stream logs job/kafka-topic-init
 ```
 
 Four topics, 3 partitions each; `retention.ms=86400000` on the two telemetry topics
@@ -218,7 +218,7 @@ and `604800000` on `alerts.generated.v1` and `telemetry.dlq.v1`.
 curl -s http://$(minikube ip):30081/jobs/overview | jq '.jobs[] | {name, state, start-time}'
 
 # or without a NodePort
-kubectl -n aware exec deploy/flink-jobmanager -- \
+kubectl -n stream exec deploy/flink-jobmanager -- \
   curl -s localhost:8081/jobs/overview
 ```
 
@@ -228,7 +228,7 @@ subtasks per operator, and the checkpoint tab a completed checkpoint every 30s.
 Three TaskManagers, one slot each, all registered:
 
 ```bash
-kubectl -n aware exec deploy/flink-jobmanager -- \
+kubectl -n stream exec deploy/flink-jobmanager -- \
   curl -s localhost:8081/overview
 # expect "taskmanagers":3, "slots-total":3, "slots-available":0 while the job runs
 ```
@@ -248,12 +248,12 @@ Then, one window plus the watermark lag later:
 ```bash
 curl -s "http://$(minikube ip):30092/api/v1/alerts?severity=WARNING&size=20" | jq .
 
-kubectl -n aware exec -it postgres-0 -- \
-  psql -U aware -d aware -c \
+kubectl -n stream exec -it postgres-0 -- \
+  psql -U stream -d stream -c \
   'SELECT severity, count(*), max(generated_at) FROM alerts GROUP BY severity ORDER BY 1;'
 
-kubectl -n aware exec -it postgres-0 -- \
-  psql -U aware -d aware -c 'SELECT count(*) FROM station_window_aggregates;'
+kubectl -n stream exec -it postgres-0 -- \
+  psql -U stream -d stream -c 'SELECT count(*) FROM station_window_aggregates;'
 ```
 
 Nothing in `alerts` but rows in `station_window_aggregates` means the pipeline is
@@ -262,14 +262,14 @@ running and no threshold was breached - raise `stormStations`.
 ### Metrics are exposed (phase 3 depends on this)
 
 ```bash
-kubectl -n aware exec deploy/ingest-service -- curl -s localhost:8080/actuator/prometheus | head
-kubectl -n aware exec deploy/flink-jobmanager -- curl -s localhost:9249/metrics | head
+kubectl -n stream exec deploy/ingest-service -- curl -s localhost:8080/actuator/prometheus | head
+kubectl -n stream exec deploy/flink-jobmanager -- curl -s localhost:9249/metrics | head
 ```
 
 Both Spring pods and both Flink pod sets carry `prometheus.io/scrape`,
 `prometheus.io/port` and `prometheus.io/path` annotations, so an annotation-driven
 Prometheus discovers them with no further configuration. The four Services also carry
-`monitoring: aware` as a selector handle for a Prometheus Operator `ServiceMonitor`.
+`monitoring: stream` as a selector handle for a Prometheus Operator `ServiceMonitor`.
 `flink-taskmanager-metrics` is headless on purpose: a load-balanced ClusterIP would
 scrape a different one of the three TaskManagers each interval.
 
@@ -465,7 +465,7 @@ be downgraded to `baseline`.
 The uids are the ones each image would have dropped to itself, so the privilege drop
 happens before the container starts rather than inside it: Kafka `1000` (`appuser`),
 PostgreSQL `70` (`postgres`), Flink `9999` (`flink`), and both Spring services `1001`
-(the `aware` account created in the Dockerfile).
+(the `stream` account created in the Dockerfile).
 
 `readOnlyRootFilesystem: true` is set on **every** container, including the init
 containers. The three upstream images that insist on writing somewhere get an emptyDir
@@ -492,7 +492,7 @@ the scheduler honours them anyway, which is the only place they matter.
 
 ### Secrets
 
-The database credentials live in one `Secret` (`aware-postgres`). PostgreSQL reads it
+The database credentials live in one `Secret` (`stream-postgres`). PostgreSQL reads it
 via `envFrom`; alert-service references the same two keys via `secretKeyRef`. Neither
 workload carries the password in its own spec, and no ConfigMap in this tree contains
 a credential. `SPRING_DATASOURCE_URL` is in a ConfigMap because it is wiring, not a
@@ -542,7 +542,7 @@ is what the dissertation measures.
 7. **No HPA and no Prometheus yet.** Both are phase 3. What is in place for them: every
    workload has resource requests (which an HPA needs to compute utilisation),
    `metrics-server` is enabled by the recommended `minikube start`, all four Services
-   carry a `monitoring: aware` label for a `ServiceMonitor` selector, and the Spring
+   carry a `monitoring: stream` label for a `ServiceMonitor` selector, and the Spring
    and Flink pods carry Prometheus scrape annotations.
 
 8. **`kubectl apply -k`, not Argo CD or Flux.** Phase 2's Jenkins pipeline calls
