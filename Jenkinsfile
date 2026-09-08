@@ -86,9 +86,22 @@ pipeline {
                 always {
                     junit allowEmptyResults: false,
                           testResults: '**/target/surefire-reports/TEST-*.xml,**/target/failsafe-reports/TEST-*.xml'
+                    // sourceDirectories is required in a multi-module reactor. The JaCoCo
+                    // XML names classes by package only ("com/stream/processing/..."), and
+                    // the plugin resolves that against the workspace root, where nothing
+                    // matches - each module keeps its own src/main/java. Without these
+                    // four roots the metrics still parse correctly but every source lookup
+                    // fails, which floods the log ("skipped logging of 57 additional
+                    // errors") and leaves the coverage report unbrowsable.
                     recordCoverage(
                         tools: [[parser: 'JACOCO', pattern: '**/target/site/jacoco/jacoco.xml']],
-                        sourceCodeRetention: 'EVERY_BUILD'
+                        sourceCodeRetention: 'EVERY_BUILD',
+                        sourceDirectories: [
+                            [path: 'common-model/src/main/java'],
+                            [path: 'ingest-service/src/main/java'],
+                            [path: 'flink-pipeline/src/main/java'],
+                            [path: 'alert-service/src/main/java']
+                        ]
                     )
                 }
             }
