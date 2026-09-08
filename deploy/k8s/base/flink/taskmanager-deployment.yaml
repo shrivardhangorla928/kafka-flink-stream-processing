@@ -70,7 +70,13 @@ spec:
             - -c
             - |
               set -euo pipefail
-              cp -a /opt/flink/conf/. /writable-conf/
+              # -RL, not -a. `cp -a` implies --preserve=all, which makes cp stamp the
+              # source directory's ownership and timestamps onto the destination - here
+              # the emptyDir's mount point, owned by root. Under the `restricted` Pod
+              # Security Standard this container is a non-root user, utimes() on a
+              # directory it does not own returns EPERM, and `set -e` then kills the
+              # init container on every retry. Only the file contents are wanted.
+              cp -RL /opt/flink/conf/. /writable-conf/
               cp /config-source/config.yaml /writable-conf/config.yaml
           resources:
             requests:
