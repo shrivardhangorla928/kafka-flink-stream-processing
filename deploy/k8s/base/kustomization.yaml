@@ -1,0 +1,24 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+# The base is the production-shaped variant: 3 Kafka brokers, replication factor 3,
+# 3 alert-service replicas. The `local` overlay shrinks it to fit a workstation
+# minikube; the `staging` overlay keeps the shape and enlarges the resources.
+namespace: aware
+
+resources:
+  - namespace.yaml
+  - kafka
+  - postgres
+  - flink
+  - ingest-service
+  - alert-service
+
+# includeSelectors is false on purpose: a label that lands in a Deployment or
+# StatefulSet selector becomes immutable, so a later overlay could never change it.
+labels:
+  - includeSelectors: false
+    includeTemplates: true
+    pairs:
+      app.kubernetes.io/part-of: aware-stream-platform
+      app.kubernetes.io/managed-by: kustomize

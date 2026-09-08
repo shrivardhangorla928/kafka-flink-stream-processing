@@ -1,0 +1,502 @@
+[
+  {
+    "stationId": "STN-0001",
+    "stationName": "Srikakulam Rain Gauge",
+    "districtId": "AP-SRIKAKULAM",
+    "sensorType": "RAINFALL",
+    "latitude": 18.3,
+    "longitude": 83.9,
+    "baseline": 1.44,
+    "enabled": true
+  },
+  {
+    "stationId": "STN-0002",
+    "stationName": "Palasa Rain Gauge",
+    "districtId": "AP-SRIKAKULAM",
+    "sensorType": "RAINFALL",
+    "latitude": 18.77,
+    "longitude": 84.41,
+    "baseline": 0.93,
+    "enabled": true
+  },
+  {
+    "stationId": "STN-0003",
+    "stationName": "Parvathipuram Rain Gauge",
+    "districtId": "AP-PARVATHIPURAM-MANYAM",
+    "sensorType": "RAINFALL",
+    "latitude": 18.78,
+    "longitude": 83.43,
+    "baseline": 1.41,
+    "enabled": true
+  },
+  {
+    "stationId": "STN-0004",
+    "stationName": "Salur Rain Gauge",
+    "districtId": "AP-PARVATHIPURAM-MANYAM",
+    "sensorType": "RAINFALL",
+    "latitude": 18.52,
+    "longitude": 83.21,
+    "baseline": 0.37,
+    "enabled": true
+  },
+  {
+    "stationId": "STN-0005",
+    "stationName": "Vizianagaram Rain Gauge",
+    "districtId": "AP-VIZIANAGARAM",
+    "sensorType": "RAINFALL",
+    "latitude": 18.11,
+    "longitude": 83.41,
+    "baseline": 0.56,
+    "enabled": true
+  },
+  {
+    "stationId": "STN-0006",
+    "stationName": "Bobbili Rain Gauge",
+    "districtId": "AP-VIZIANAGARAM",
+    "sensorType": "RAINFALL",
+    "latitude": 18.57,
+    "longitude": 83.36,
+    "baseline": 0.53,
+    "enabled": true
+  },
+  {
+    "stationId": "STN-0007",
+    "stationName": "Visakhapatnam Rain Gauge",
+    "districtId": "AP-VISAKHAPATNAM",
+    "sensorType": "RAINFALL",
+    "latitude": 17.72,
+    "longitude": 83.3,
+    "baseline": 1.19,
+    "enabled": true
+  },
+  {
+    "stationId": "STN-0008",
+    "stationName": "Narsipatnam Rain Gauge",
+    "districtId": "AP-ANAKAPALLI",
+    "sensorType": "RAINFALL",
+    "latitude": 17.67,
+    "longitude": 82.61,
+    "baseline": 1.34,
+    "enabled": true
+  },
+  {
+    "stationId": "STN-0009",
+    "stationName": "Anakapalli Rain Gauge",
+    "districtId": "AP-ANAKAPALLI",
+    "sensorType": "RAINFALL",
+    "latitude": 17.69,
+    "longitude": 82.99,
+    "baseline": 0.64,
+    "enabled": true
+  },
+  {
+    "stationId": "STN-0010",
+    "stationName": "Paderu Rain Gauge",
+    "districtId": "AP-ALLURI-SITHARAMA-RAJU",
+    "sensorType": "RAINFALL",
+    "latitude": 18.08,
+    "longitude": 82.67,
+    "baseline": 0.32,
+    "enabled": true
+  },
+  {
+    "stationId": "STN-0011",
+    "stationName": "Rampachodavaram Rain Gauge",
+    "districtId": "AP-ALLURI-SITHARAMA-RAJU",
+    "sensorType": "RAINFALL",
+    "latitude": 17.44,
+    "longitude": 81.77,
+    "baseline": 0.67,
+    "enabled": true
+  },
+  {
+    "stationId": "STN-0012",
+    "stationName": "Kakinada Rain Gauge",
+    "districtId": "AP-KAKINADA",
+    "sensorType": "RAINFALL",
+    "latitude": 16.99,
+    "longitude": 82.24,
+    "baseline": 1.06,
+    "enabled": true
+  },
+  {
+    "stationId": "STN-0013",
+    "stationName": "Peddapuram Rain Gauge",
+    "districtId": "AP-KAKINADA",
+    "sensorType": "RAINFALL",
+    "latitude": 17.08,
+    "longitude": 82.14,
+    "baseline": 0.67,
+    "enabled": true
+  },
+  {
+    "stationId": "STN-0014",
+    "stationName": "Amalapuram Rain Gauge",
+    "districtId": "AP-KONASEEMA",
+    "sensorType": "RAINFALL",
+    "latitude": 16.58,
+    "longitude": 82.01,
+    "baseline": 1.17,
+    "enabled": true
+  },
+  {
+    "stationId": "STN-0015",
+    "stationName": "Razole Rain Gauge",
+    "districtId": "AP-KONASEEMA",
+    "sensorType": "RAINFALL",
+    "latitude": 16.48,
+    "longitude": 81.84,
+    "baseline": 0.54,
+    "enabled": true
+  },
+  {
+    "stationId": "STN-0016",
+    "stationName": "Rajahmundry Rain Gauge",
+    "districtId": "AP-EAST-GODAVARI",
+    "sensorType": "RAINFALL",
+    "latitude": 17.0,
+    "longitude": 81.78,
+    "baseline": 0.5,
+    "enabled": true
+  },
+  {
+    "stationId": "STN-0017",
+    "stationName": "Bhimavaram Rain Gauge",
+    "districtId": "AP-WEST-GODAVARI",
+    "sensorType": "RAINFALL",
+    "latitude": 16.54,
+    "longitude": 81.52,
+    "baseline": 1.22,
+    "enabled": true
+  },
+  {
+    "stationId": "STN-0018",
+    "stationName": "Tadepalligudem Rain Gauge",
+    "districtId": "AP-WEST-GODAVARI",
+    "sensorType": "RAINFALL",
+    "latitude": 16.82,
+    "longitude": 81.53,
+    "baseline": 1.4,
+    "enabled": true
+  },
+  {
+    "stationId": "STN-0019",
+    "stationName": "Eluru Rain Gauge",
+    "districtId": "AP-ELURU",
+    "sensorType": "RAINFALL",
+    "latitude": 16.71,
+    "longitude": 81.1,
+    "baseline": 1.36,
+    "enabled": true
+  },
+  {
+    "stationId": "STN-0020",
+    "stationName": "Nuzvid Rain Gauge",
+    "districtId": "AP-ELURU",
+    "sensorType": "RAINFALL",
+    "latitude": 16.79,
+    "longitude": 80.85,
+    "baseline": 1.35,
+    "enabled": true
+  },
+  {
+    "stationId": "STN-0021",
+    "stationName": "Machilipatnam Rain Gauge",
+    "districtId": "AP-KRISHNA",
+    "sensorType": "RAINFALL",
+    "latitude": 16.19,
+    "longitude": 81.14,
+    "baseline": 0.64,
+    "enabled": true
+  },
+  {
+    "stationId": "STN-0022",
+    "stationName": "Gudivada Rain Gauge",
+    "districtId": "AP-KRISHNA",
+    "sensorType": "RAINFALL",
+    "latitude": 16.43,
+    "longitude": 80.99,
+    "baseline": 0.9,
+    "enabled": true
+  },
+  {
+    "stationId": "STN-0023",
+    "stationName": "Vijayawada Rain Gauge",
+    "districtId": "AP-NTR",
+    "sensorType": "RAINFALL",
+    "latitude": 16.51,
+    "longitude": 80.62,
+    "baseline": 0.82,
+    "enabled": true
+  },
+  {
+    "stationId": "STN-0024",
+    "stationName": "Guntur Rain Gauge",
+    "districtId": "AP-GUNTUR",
+    "sensorType": "RAINFALL",
+    "latitude": 16.31,
+    "longitude": 80.44,
+    "baseline": 1.43,
+    "enabled": true
+  },
+  {
+    "stationId": "STN-0025",
+    "stationName": "Narasaraopet Rain Gauge",
+    "districtId": "AP-PALNADU",
+    "sensorType": "RAINFALL",
+    "latitude": 16.24,
+    "longitude": 80.05,
+    "baseline": 1.45,
+    "enabled": true
+  },
+  {
+    "stationId": "STN-0026",
+    "stationName": "Bapatla Rain Gauge",
+    "districtId": "AP-BAPATLA",
+    "sensorType": "RAINFALL",
+    "latitude": 15.9,
+    "longitude": 80.47,
+    "baseline": 1.5,
+    "enabled": true
+  },
+  {
+    "stationId": "STN-0027",
+    "stationName": "Ongole Rain Gauge",
+    "districtId": "AP-PRAKASAM",
+    "sensorType": "RAINFALL",
+    "latitude": 15.5,
+    "longitude": 80.05,
+    "baseline": 1.34,
+    "enabled": true
+  },
+  {
+    "stationId": "STN-0028",
+    "stationName": "Nellore Rain Gauge",
+    "districtId": "AP-NELLORE",
+    "sensorType": "RAINFALL",
+    "latitude": 14.44,
+    "longitude": 79.99,
+    "baseline": 0.77,
+    "enabled": true
+  },
+  {
+    "stationId": "STN-0029",
+    "stationName": "Kurnool Rain Gauge",
+    "districtId": "AP-KURNOOL",
+    "sensorType": "RAINFALL",
+    "latitude": 15.83,
+    "longitude": 78.04,
+    "baseline": 0.66,
+    "enabled": true
+  },
+  {
+    "stationId": "STN-0030",
+    "stationName": "Nandyal Rain Gauge",
+    "districtId": "AP-NANDYAL",
+    "sensorType": "RAINFALL",
+    "latitude": 15.48,
+    "longitude": 78.48,
+    "baseline": 1.21,
+    "enabled": true
+  },
+  {
+    "stationId": "STN-0031",
+    "stationName": "Srisailam Reservoir",
+    "districtId": "AP-NANDYAL",
+    "sensorType": "RESERVOIR_LEVEL",
+    "latitude": 15.87,
+    "longitude": 78.9,
+    "baseline": 68.74,
+    "enabled": true
+  },
+  {
+    "stationId": "STN-0032",
+    "stationName": "Nagarjuna Sagar Right Bank",
+    "districtId": "AP-PALNADU",
+    "sensorType": "RESERVOIR_LEVEL",
+    "latitude": 16.57,
+    "longitude": 79.31,
+    "baseline": 59.83,
+    "enabled": true
+  },
+  {
+    "stationId": "STN-0033",
+    "stationName": "Pulichintala Project",
+    "districtId": "AP-PALNADU",
+    "sensorType": "RESERVOIR_LEVEL",
+    "latitude": 16.63,
+    "longitude": 79.87,
+    "baseline": 56.76,
+    "enabled": true
+  },
+  {
+    "stationId": "STN-0034",
+    "stationName": "Somasila Reservoir",
+    "districtId": "AP-NELLORE",
+    "sensorType": "RESERVOIR_LEVEL",
+    "latitude": 14.47,
+    "longitude": 79.35,
+    "baseline": 58.88,
+    "enabled": true
+  },
+  {
+    "stationId": "STN-0035",
+    "stationName": "Kandaleru Reservoir",
+    "districtId": "AP-NELLORE",
+    "sensorType": "RESERVOIR_LEVEL",
+    "latitude": 14.05,
+    "longitude": 79.6,
+    "baseline": 58.24,
+    "enabled": true
+  },
+  {
+    "stationId": "STN-0036",
+    "stationName": "Gandikota Reservoir",
+    "districtId": "AP-YSR-KADAPA",
+    "sensorType": "RESERVOIR_LEVEL",
+    "latitude": 14.81,
+    "longitude": 78.29,
+    "baseline": 55.04,
+    "enabled": true
+  },
+  {
+    "stationId": "STN-0037",
+    "stationName": "Mylavaram Reservoir",
+    "districtId": "AP-YSR-KADAPA",
+    "sensorType": "RESERVOIR_LEVEL",
+    "latitude": 14.65,
+    "longitude": 78.25,
+    "baseline": 70.55,
+    "enabled": true
+  },
+  {
+    "stationId": "STN-0038",
+    "stationName": "Yeleru Reservoir",
+    "districtId": "AP-KAKINADA",
+    "sensorType": "RESERVOIR_LEVEL",
+    "latitude": 17.35,
+    "longitude": 82.3,
+    "baseline": 63.43,
+    "enabled": true
+  },
+  {
+    "stationId": "STN-0039",
+    "stationName": "Thandava Reservoir",
+    "districtId": "AP-ANAKAPALLI",
+    "sensorType": "RESERVOIR_LEVEL",
+    "latitude": 17.55,
+    "longitude": 82.6,
+    "baseline": 65.92,
+    "enabled": true
+  },
+  {
+    "stationId": "STN-0040",
+    "stationName": "Tatipudi Reservoir",
+    "districtId": "AP-VIZIANAGARAM",
+    "sensorType": "RESERVOIR_LEVEL",
+    "latitude": 18.2,
+    "longitude": 83.2,
+    "baseline": 80.18,
+    "enabled": true
+  },
+  {
+    "stationId": "STN-0041",
+    "stationName": "Chitravathi Balancing Reservoir",
+    "districtId": "AP-SRI-SATHYA-SAI",
+    "sensorType": "RESERVOIR_LEVEL",
+    "latitude": 14.15,
+    "longitude": 77.85,
+    "baseline": 73.65,
+    "enabled": true
+  },
+  {
+    "stationId": "STN-0042",
+    "stationName": "Kanigiri Reservoir",
+    "districtId": "AP-PRAKASAM",
+    "sensorType": "RESERVOIR_LEVEL",
+    "latitude": 15.4,
+    "longitude": 79.5,
+    "baseline": 54.29,
+    "enabled": true
+  },
+  {
+    "stationId": "STN-0043",
+    "stationName": "Godavari at Dowleswaram Barrage",
+    "districtId": "AP-EAST-GODAVARI",
+    "sensorType": "RIVER_LEVEL",
+    "latitude": 16.95,
+    "longitude": 81.78,
+    "baseline": 3.08,
+    "enabled": true
+  },
+  {
+    "stationId": "STN-0044",
+    "stationName": "Godavari at Polavaram",
+    "districtId": "AP-ELURU",
+    "sensorType": "RIVER_LEVEL",
+    "latitude": 17.25,
+    "longitude": 81.65,
+    "baseline": 4.38,
+    "enabled": true
+  },
+  {
+    "stationId": "STN-0045",
+    "stationName": "Krishna at Prakasam Barrage",
+    "districtId": "AP-NTR",
+    "sensorType": "RIVER_LEVEL",
+    "latitude": 16.51,
+    "longitude": 80.61,
+    "baseline": 6.19,
+    "enabled": true
+  },
+  {
+    "stationId": "STN-0046",
+    "stationName": "Krishna at Pulichintala Downstream",
+    "districtId": "AP-PALNADU",
+    "sensorType": "RIVER_LEVEL",
+    "latitude": 16.61,
+    "longitude": 79.9,
+    "baseline": 6.09,
+    "enabled": true
+  },
+  {
+    "stationId": "STN-0047",
+    "stationName": "Penna at Nellore Anicut",
+    "districtId": "AP-NELLORE",
+    "sensorType": "RIVER_LEVEL",
+    "latitude": 14.44,
+    "longitude": 79.98,
+    "baseline": 3.64,
+    "enabled": true
+  },
+  {
+    "stationId": "STN-0048",
+    "stationName": "Vamsadhara at Gotta Barrage",
+    "districtId": "AP-SRIKAKULAM",
+    "sensorType": "RIVER_LEVEL",
+    "latitude": 18.65,
+    "longitude": 84.05,
+    "baseline": 6.02,
+    "enabled": true
+  },
+  {
+    "stationId": "STN-0049",
+    "stationName": "Nagavali at Srikakulam",
+    "districtId": "AP-SRIKAKULAM",
+    "sensorType": "RIVER_LEVEL",
+    "latitude": 18.3,
+    "longitude": 83.89,
+    "baseline": 4.46,
+    "enabled": true
+  },
+  {
+    "stationId": "STN-0050",
+    "stationName": "Tungabhadra at Kurnool",
+    "districtId": "AP-KURNOOL",
+    "sensorType": "RIVER_LEVEL",
+    "latitude": 15.81,
+    "longitude": 78.02,
+    "baseline": 5.73,
+    "enabled": true
+  }
+]

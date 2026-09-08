@@ -1,0 +1,51 @@
+# Headless service: gives every broker a stable per-pod DNS name,
+# kafka-<ordinal>.kafka-headless.<ns>.svc.cluster.local. That name is what the pod
+# advertises to clients and what the KRaft voter list points at, so it has to exist
+# and resolve before the broker is Ready - hence publishNotReadyAddresses.
+apiVersion: v1
+kind: Service
+metadata:
+  name: kafka-headless
+  labels:
+    app.kubernetes.io/name: kafka
+    app.kubernetes.io/component: broker
+spec:
+  clusterIP: None
+  # A KRaft quorum forms by the voters talking to each other. None of them is Ready
+  # until the quorum exists, so without this the DNS records the voters need would
+  # not be published and the cluster would deadlock on first boot.
+  publishNotReadyAddresses: true
+  selector:
+    app.kubernetes.io/name: kafka
+    app.kubernetes.io/component: broker
+  ports:
+    - name: kafka
+      port: 9092
+      targetPort: kafka
+      protocol: TCP
+    - name: controller
+      port: 9093
+      targetPort: controller
+      protocol: TCP
+
+---
+# Regular ClusterIP service: the bootstrap address every client in the namespace
+# uses (`kafka:9092`). Bootstrap only needs to reach one live broker; the metadata
+# response then hands out the per-pod advertised names from the headless service.
+apiVersion: v1
+kind: Service
+metadata:
+  name: kafka
+  labels:
+    app.kubernetes.io/name: kafka
+    app.kubernetes.io/component: broker
+spec:
+  type: ClusterIP
+  selector:
+    app.kubernetes.io/name: kafka
+    app.kubernetes.io/component: broker
+  ports:
+    - name: kafka
+      port: 9092
+      targetPort: kafka
+      protocol: TCP

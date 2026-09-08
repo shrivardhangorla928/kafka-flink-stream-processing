@@ -1,0 +1,183 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <groupId>com.vassar.aware</groupId>
+    <artifactId>aware-stream-platform</artifactId>
+    <version>1.0.0-SNAPSHOT</version>
+    <packaging>pom</packaging>
+
+    <name>AWARE Stream Platform</name>
+    <description>
+        Event-driven scrape - aggregate - alert pipeline built on Kafka and Apache Flink.
+        Dissertation project: DevOps Automation with Scalable Services, Real-Time Monitoring
+        and Stream Processing (BITS ID 2024MT03552).
+    </description>
+
+    <modules>
+        <module>common-model</module>
+        <module>ingest-service</module>
+        <module>flink-pipeline</module>
+        <module>alert-service</module>
+    </modules>
+
+    <properties>
+        <java.version>21</java.version>
+        <maven.compiler.release>21</maven.compiler.release>
+        <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+
+        <spring-boot.version>3.5.3</spring-boot.version>
+
+        <!--
+            Flink 1.20 is the LTS line, but the Apache Flink project publishes no java21
+            container image for it (java8/11/17 only). The Flink job and the contract module
+            it depends on therefore emit Java 17 bytecode so they load on flink:*-java17;
+            the two Spring Boot services stay on Java 21. See flink.compiler.release below.
+        -->
+        <flink.version>1.20.5</flink.version>
+        <flink-kafka-connector.version>3.4.0-1.20</flink-kafka-connector.version>
+        <flink.compiler.release>17</flink.compiler.release>
+        <jackson.version>2.18.2</jackson.version>
+        <micrometer.version>1.14.2</micrometer.version>
+        <slf4j.version>2.0.16</slf4j.version>
+        <log4j.version>2.24.3</log4j.version>
+        <junit.version>5.11.4</junit.version>
+        <assertj.version>3.27.0</assertj.version>
+        <testcontainers.version>1.20.4</testcontainers.version>
+
+        <jacoco.version>0.8.12</jacoco.version>
+        <surefire.version>3.5.2</surefire.version>
+        <failsafe.version>3.5.2</failsafe.version>
+        <shade.version>3.6.0</shade.version>
+        <sonar.version>5.0.0.4389</sonar.version>
+
+        <!-- SonarQube: aggregate coverage report produced by the coverage-report module -->
+        <sonar.coverage.jacoco.xmlReportPaths>
+            ${project.basedir}/../target/site/jacoco-aggregate/jacoco.xml,${project.basedir}/target/site/jacoco/jacoco.xml
+        </sonar.coverage.jacoco.xmlReportPaths>
+    </properties>
+
+    <dependencyManagement>
+        <dependencies>
+            <dependency>
+                <groupId>org.springframework.boot</groupId>
+                <artifactId>spring-boot-dependencies</artifactId>
+                <version>${spring-boot.version}</version>
+                <type>pom</type>
+                <scope>import</scope>
+            </dependency>
+            <dependency>
+                <groupId>com.fasterxml.jackson</groupId>
+                <artifactId>jackson-bom</artifactId>
+                <version>${jackson.version}</version>
+                <type>pom</type>
+                <scope>import</scope>
+            </dependency>
+            <dependency>
+                <groupId>org.testcontainers</groupId>
+                <artifactId>testcontainers-bom</artifactId>
+                <version>${testcontainers.version}</version>
+                <type>pom</type>
+                <scope>import</scope>
+            </dependency>
+
+            <dependency>
+                <groupId>com.vassar.aware</groupId>
+                <artifactId>common-model</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+        </dependencies>
+    </dependencyManagement>
+
+    <dependencies>
+        <dependency>
+            <groupId>org.junit.jupiter</groupId>
+            <artifactId>junit-jupiter</artifactId>
+            <version>${junit.version}</version>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.assertj</groupId>
+            <artifactId>assertj-core</artifactId>
+            <version>${assertj.version}</version>
+            <scope>test</scope>
+        </dependency>
+    </dependencies>
+
+    <build>
+        <pluginManagement>
+            <plugins>
+                <plugin>
+                    <groupId>org.springframework.boot</groupId>
+                    <artifactId>spring-boot-maven-plugin</artifactId>
+                    <version>${spring-boot.version}</version>
+                </plugin>
+                <plugin>
+                    <groupId>org.apache.maven.plugins</groupId>
+                    <artifactId>maven-shade-plugin</artifactId>
+                    <version>${shade.version}</version>
+                </plugin>
+                <plugin>
+                    <groupId>org.apache.maven.plugins</groupId>
+                    <artifactId>maven-failsafe-plugin</artifactId>
+                    <version>${failsafe.version}</version>
+                </plugin>
+            </plugins>
+        </pluginManagement>
+
+        <plugins>
+            <!--
+                Retain parameter names in the bytecode. spring-boot-starter-parent sets this for
+                you, and this build deliberately does not inherit from it (the Flink module has to
+                stay outside Spring's dependency management). Spring Framework 6.1 removed the
+                debug-symbol fallback for discovering parameter names, so without this flag an
+                unnamed @RequestParam or @PathVariable fails at request time rather than at build
+                time - a trap that only shows up once the service is running.
+            -->
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-compiler-plugin</artifactId>
+                <version>3.13.0</version>
+                <configuration>
+                    <parameters>true</parameters>
+                </configuration>
+            </plugin>
+
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-surefire-plugin</artifactId>
+                <version>${surefire.version}</version>
+            </plugin>
+
+            <!-- Coverage for the SonarQube quality gate (phase 2 of the dissertation) -->
+            <plugin>
+                <groupId>org.jacoco</groupId>
+                <artifactId>jacoco-maven-plugin</artifactId>
+                <version>${jacoco.version}</version>
+                <executions>
+                    <execution>
+                        <id>prepare-agent</id>
+                        <goals>
+                            <goal>prepare-agent</goal>
+                        </goals>
+                    </execution>
+                    <execution>
+                        <id>report</id>
+                        <phase>verify</phase>
+                        <goals>
+                            <goal>report</goal>
+                        </goals>
+                    </execution>
+                </executions>
+            </plugin>
+
+            <plugin>
+                <groupId>org.sonarsource.scanner.maven</groupId>
+                <artifactId>sonar-maven-plugin</artifactId>
+                <version>${sonar.version}</version>
+            </plugin>
+        </plugins>
+    </build>
+</project>

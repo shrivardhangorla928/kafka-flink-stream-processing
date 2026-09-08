@@ -1,0 +1,172 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ingest-service
+  labels:
+    app.kubernetes.io/name: ingest-service
+    app.kubernetes.io/component: api
+    app.kubernetes.io/version: 1.0.0
+spec:
+  # Two replicas is an availability floor, not a throughput number: the producer is
+  # stateless and partition-keyed, so it scales horizontally without coordination.
+  # Phase 3 puts an HPA on this Deployment.
+  replicas: 2
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      # maxUnavailable 0: the API stays at full capacity through a deploy.
+      maxUnavailable: 0
+      maxSurge: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: ingest-service
+      app.kubernetes.io/component: api
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: ingest-service
+        app.kubernetes.io/component: api
+        app.kubernetes.io/version: 1.0.0
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "8080"
+        prometheus.io/path: /actuator/prometheus
+    spec:
+      serviceAccountName: ingest-service
+      automountServiceAccountToken: false
+      # 10s preStop + 20s graceful shutdown = 30s of work, plus margin.
+      terminationGracePeriodSeconds: 45
+      securityContext:
+        runAsNonRoot: true
+        # uid 1001 is the `aware` account created in the Dockerfile's ingest stage.
+        runAsUser: 1001
+        runAsGroup: 1001
+        fsGroup: 1001
+        seccompProfile:
+          type: RuntimeDefault
+      topologySpreadConstraints:
+        - maxSkew: 1
+          topologyKey: kubernetes.io/hostname
+          whenUnsatisfiable: ScheduleAnyway
+          labelSelector:
+            matchLabels:
+              app.kubernetes.io/name: ingest-service
+              app.kubernetes.io/component: api
+      initContainers:
+        # Ordering gate only; the Kafka producer would retry anyway, but a pod that
+        # reports Ready before its broker exists will accept readings it cannot
+        # publish.
+        - name: wait-for-kafka
+          image: aware/ingest-service:1.0.0
+          imagePullPolicy: IfNotPresent
+          command:
+            - /bin/bash
+            - -c
+            - |
+              set -euo pipefail
+              echo "waiting for ${KAFKA_HOST}:${KAFKA_PORT} ..."
+              declare -i attempt=0
+              until (echo > /dev/tcp/${KAFKA_HOST}/${KAFKA_PORT}) 2>/dev/null; do
+                attempt+=1
+                if (( attempt > 90 )); then
+                  echo "kafka was still unreachable after 3 minutes" >&2
+                  exit 1
+                fi
+                sleep 2
+              done
+          env:
+            - name: KAFKA_HOST
+              value: kafka
+            - name: KAFKA_PORT
+              value: "9092"
+          resources:
+            requests:
+              memory: 32Mi
+              cpu: 25m
+            limits:
+              memory: 64Mi
+              cpu: 100m
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop:
+                - ALL
+      containers:
+        - name: ingest-service
+          image: aware/ingest-service:1.0.0
+          imagePullPolicy: IfNotPresent
+          ports:
+            - name: http
+              containerPort: 8080
+              protocol: TCP
+          envFrom:
+            - configMapRef:
+                name: ingest-service-config
+          resources:
+            requests:
+              memory: 512Mi
+              cpu: 250m
+            limits:
+              # The image sets -XX:MaxRAMPercentage=75, so the heap tracks this
+              # limit: 1Gi here gives roughly a 768Mi heap with the rest for
+              # metaspace, thread stacks and code cache.
+              memory: 1Gi
+              cpu: "1"
+          lifecycle:
+            preStop:
+              # Endpoint removal and container termination race: kube-proxy on
+              # every node has to observe the EndpointSlice change, and that is
+              # asynchronous. Sleeping first means the process is still serving
+              # while the last requests are still being routed to it.
+              #
+              # The exec form rather than the newer `sleep:` handler so the
+              # manifest works on any cluster the Jenkins pipeline is pointed at.
+              exec:
+                command:
+                  - /bin/sh
+                  - -c
+                  - sleep 10
+          # A cold Spring Boot JVM on this workstation reaches its first successful
+          # actuator response in roughly 30-45s. The startup probe budget is
+          # 10s initial + 30 x 5s = 160s, about 3.5x the observed worst case, so a
+          # loaded node or a cold page cache does not produce a restart loop. Until
+          # it succeeds the liveness probe is not evaluated at all, which is the
+          # whole point of having a separate startup probe for a JVM.
+          startupProbe:
+            httpGet:
+              path: /actuator/health/liveness
+              port: http
+            initialDelaySeconds: 10
+            periodSeconds: 5
+            timeoutSeconds: 3
+            failureThreshold: 30
+          livenessProbe:
+            httpGet:
+              path: /actuator/health/liveness
+              port: http
+            periodSeconds: 10
+            timeoutSeconds: 3
+            failureThreshold: 3
+          readinessProbe:
+            httpGet:
+              path: /actuator/health/readiness
+              port: http
+            periodSeconds: 10
+            timeoutSeconds: 3
+            failureThreshold: 3
+            successThreshold: 1
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop:
+                - ALL
+          volumeMounts:
+            # java.io.tmpdir: the embedded servlet container's work directory and
+            # any multipart spill land here.
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: tmp
+          emptyDir: {}

@@ -1,0 +1,62 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+# Workstation minikube: one node, one Kafka broker, everything shrunk to fit
+# alongside an IDE and a Jenkins container. Total pod requests are held at or
+# under 5 GiB / 2 CPU - the arithmetic is in deploy/k8s/README.md.
+namespace: aware
+
+resources:
+  - ../../base
+  - flink-ui-nodeport.yaml
+
+# imagePullPolicy is IfNotPresent throughout the base, which is what this overlay
+# needs: the three aware/* images are built straight into minikube's Docker daemon
+# and exist in no registry, so a pull would fail. Nothing to patch here - the
+# staging overlay is the one that changes it, to Always.
+
+# Declared so the Jenkins pipeline in phase 2 can retag a deploy without editing
+# YAML: `kustomize edit set image aware/ingest-service=aware/ingest-service:$BUILD`.
+images:
+  - name: aware/ingest-service
+    newTag: 1.0.0
+  - name: aware/alert-service
+    newTag: 1.0.0
+  - name: aware/flink-pipeline
+    newTag: 1.0.0
+
+replicas:
+  # A single broker: three would triple the memory bill for no extra durability on
+  # one node. Replication factor and min ISR drop to 1 to match (patches/kafka-config.yaml).
+  - name: kafka
+    count: 1
+  # Two rather than three. The third consumer is only useful when there are three
+  # partitions to spread across three separate pods, and on one node the budget is
+  # better spent elsewhere. Two consumers still exercise group rebalancing.
+  - name: alert-service
+    count: 2
+
+configMapGenerator:
+  # Replaces the base's Flink configuration with the same file at smaller memory
+  # sizes; the generated name hash changes with it, so the Deployments roll.
+  - name: flink-jobmanager-config
+    behavior: replace
+    files:
+      - config.yaml=flink/jobmanager-config.yaml
+  - name: flink-taskmanager-config
+    behavior: replace
+    files:
+      - config.yaml=flink/taskmanager-config.yaml
+
+patches:
+  - path: patches/kafka-config.yaml
+  - path: patches/kafka-topics.yaml
+  - path: patches/kafka-statefulset.yaml
+  - path: patches/kafka-pdb-delete.yaml
+  - path: patches/postgres.yaml
+  - path: patches/flink-jobmanager.yaml
+  - path: patches/flink-taskmanager.yaml
+  - path: patches/flink-state-pvc.yaml
+  - path: patches/ingest-service.yaml
+  - path: patches/alert-service.yaml
+  - path: patches/nodeport-services.yaml

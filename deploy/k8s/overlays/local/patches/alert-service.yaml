@@ -1,0 +1,16 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: alert-service
+spec:
+  template:
+    spec:
+      containers:
+        - name: alert-service
+          resources:
+            requests:
+              memory: 448Mi
+              cpu: 100m
+            limits:
+              memory: 768Mi
+              cpu: 500m

@@ -1,0 +1,58 @@
+# Disruption budgets for the stateless workloads. The base only carries one for
+# Kafka, because on a single-node local cluster a budget over a Deployment just
+# blocks `kubectl drain` for no benefit. On a multi-node cluster a node drain is
+# routine, and these are what stop a drain from taking the whole tier.
+#
+# There is deliberately no budget for postgres: it has one replica, so any budget
+# over it either permits a total outage or blocks every drain. See the scope
+# boundary note in deploy/k8s/README.md.
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: ingest-service
+  labels:
+    app.kubernetes.io/name: ingest-service
+    app.kubernetes.io/component: api
+spec:
+  # 2 replicas, so one may go at a time.
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: ingest-service
+      app.kubernetes.io/component: api
+
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: alert-service
+  labels:
+    app.kubernetes.io/name: alert-service
+    app.kubernetes.io/component: api
+spec:
+  # 3 replicas against 3 partitions: losing one leaves two consumers covering three
+  # partitions, which is slower but correct. Losing two would leave a single
+  # consumer carrying the whole alert stream.
+  minAvailable: 2
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: alert-service
+      app.kubernetes.io/component: api
+
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: flink-taskmanager
+  labels:
+    app.kubernetes.io/name: flink
+    app.kubernetes.io/component: taskmanager
+spec:
+  # A parallelism-3 job needs 3 slots. Dropping below 2 TaskManagers means the job
+  # cannot be scheduled at all and sits in a restart loop rather than degrading,
+  # so evictions are budgeted to one at a time.
+  minAvailable: 2
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: flink
+      app.kubernetes.io/component: taskmanager

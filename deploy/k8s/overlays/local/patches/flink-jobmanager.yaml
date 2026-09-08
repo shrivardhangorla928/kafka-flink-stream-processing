@@ -1,0 +1,18 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: flink-jobmanager
+spec:
+  template:
+    spec:
+      containers:
+        - name: jobmanager
+          resources:
+            requests:
+              memory: 512Mi
+              cpu: 250m
+            limits:
+              # jobmanager.memory.process.size is 768m in this overlay's
+              # config.yaml, which leaves 256Mi of slack under the limit.
+              memory: 1Gi
+              cpu: "1"

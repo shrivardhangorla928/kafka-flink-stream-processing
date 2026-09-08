@@ -1,0 +1,16 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: aware
+  labels:
+    app.kubernetes.io/name: aware
+    # `restricted` is enforceable here because every pod in this tree runs as a
+    # non-root uid with all capabilities dropped, no privilege escalation and a
+    # RuntimeDefault seccomp profile. The three upstream images (Kafka, Postgres,
+    # Flink) all normally start as root and drop privileges themselves; each pod
+    # spec pins the uid the image would have dropped to, so the privilege drop
+    # happens before the container starts instead of inside it.
+    pod-security.kubernetes.io/enforce: restricted
+    pod-security.kubernetes.io/enforce-version: latest
+    pod-security.kubernetes.io/audit: restricted
+    pod-security.kubernetes.io/warn: restricted

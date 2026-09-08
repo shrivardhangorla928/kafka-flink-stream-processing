@@ -1,0 +1,32 @@
+# Test overlay on the production application.yml.
+#
+# Layered as a profile rather than as a second classpath application.yml on purpose: the real
+# file still supplies ddl-auto=validate, the Flyway settings and the aware.alert.* limits, so the
+# tests exercise the same configuration the service is deployed with and only the endpoints of
+# the two external systems are swapped out.
+spring:
+  datasource:
+    # H2 in PostgreSQL compatibility mode. The Flyway migrations in db/migration are written to
+    # the intersection of the two dialects, so these tests run the exact DDL that production runs
+    # rather than a Hibernate-generated approximation of it - which is the only way ddl-auto
+    # validate proves anything.
+    url: jdbc:h2:mem:aware;MODE=PostgreSQL;DB_CLOSE_DELAY=-1;DB_CLOSE_ON_EXIT=FALSE
+    driver-class-name: org.h2.Driver
+    username: sa
+    password: ""
+    hikari:
+      # The production sizing is reasoned from six consumer threads plus a web tier; a test JVM
+      # has neither, and an oversized pool just slows context startup.
+      maximum-pool-size: 5
+      minimum-idle: 1
+      leak-detection-threshold: 0
+
+  jpa:
+    show-sql: false
+
+logging:
+  level:
+    org.apache.kafka: ERROR
+    kafka: ERROR
+    org.apache.zookeeper: ERROR
+    state.change.logger: ERROR

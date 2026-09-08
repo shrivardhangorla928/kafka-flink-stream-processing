@@ -1,0 +1,86 @@
+# Flink 1.20 configuration for the JobManager.
+#
+# The file is called config.yaml, not flink-conf.yaml. Flink 1.20 ships the
+# standard-YAML `config.yaml` as the only configuration file in the distribution;
+# flink-conf.yaml is the deprecated flat-properties format and is not present in
+# flink:1.20.5-scala_2.12-java17. Confirmed against the image itself: /opt/flink/conf
+# contains config.yaml only, and bin/config-parser-utils.sh (which the image's
+# entrypoint runs to apply JOB_MANAGER_RPC_ADDRESS and FLINK_PROPERTIES) falls back
+# to config.yaml precisely because flink-conf.yaml does not exist.
+#
+# Keys are written in the nested form the distribution itself uses, so the shipped
+# defaults and these overrides are parsed by the same code path.
+
+jobmanager:
+  bind-host: 0.0.0.0
+  rpc:
+    # The ClusterIP service, not the pod hostname. A Deployment pod's hostname is
+    # not resolvable, and the TaskManagers are told the same name, so both sides
+    # agree on one address. The pod also sets JOB_MANAGER_RPC_ADDRESS so the
+    # image's entrypoint does not overwrite this with `hostname -f`.
+    address: flink-jobmanager
+    port: 6123
+  memory:
+    # Process size, not heap: this is the total the JVM is allowed including
+    # metaspace, off-heap and JVM overhead. It has to sit under the container
+    # memory limit (2Gi here) or the kubelet OOM-kills a healthy JobManager.
+    process:
+      size: 1600m
+  execution:
+    failover-strategy: region
+
+# Slots are declared per TaskManager; this only matters if a TaskManager ever reads
+# this file, but keeping the two files consistent avoids a confusing mismatch in
+# the web UI's cluster configuration tab.
+taskmanager:
+  bind-host: 0.0.0.0
+  numberOfTaskSlots: 1
+
+blob:
+  server:
+    port: 6124
+
+rest:
+  address: 0.0.0.0
+  bind-address: 0.0.0.0
+  port: 8081
+
+parallelism:
+  # One subtask per Kafka partition. Anything higher leaves subtasks with no
+  # partition to read and no watermark to advance.
+  default: 3
+
+state:
+  backend:
+    # The pipeline's state is a handful of aggregates per station per 5-minute
+    # window, so an on-heap hashmap backend is both faster and simpler than RocksDB.
+    type: hashmap
+  checkpoints:
+    dir: file:///flink-state/checkpoints
+  savepoints:
+    dir: file:///flink-state/savepoints
+
+execution:
+  checkpointing:
+    # 30s against a 5-minute window: cheap relative to the work being protected,
+    # and it bounds replay on recovery to well under one window.
+    interval: 30s
+    mode: EXACTLY_ONCE
+
+metrics:
+  reporter:
+    prom:
+      # flink-metrics-prometheus-1.20.5.jar ships in /opt/flink/plugins/metrics-prometheus
+      # in this image and is loaded from there automatically, so nothing has to be
+      # copied into lib/. Phase 3 scrapes port 9249 on this pod.
+      factory:
+        class: org.apache.flink.metrics.prometheus.PrometheusReporterFactory
+      port: 9249
+
+env:
+  java:
+    opts:
+      # Reproduced verbatim from the image's own conf/config.yaml. Flink 1.20 on
+      # Java 17 does not start without these; overwriting config.yaml without
+      # carrying them across is the usual way this deployment fails.
+      all: --add-exports=java.base/sun.net.util=ALL-UNNAMED --add-exports=java.rmi/sun.rmi.registry=ALL-UNNAMED --add-exports=jdk.compiler/com.sun.tools.javac.api=ALL-UNNAMED --add-exports=jdk.compiler/com.sun.tools.javac.file=ALL-UNNAMED --add-exports=jdk.compiler/com.sun.tools.javac.parser=ALL-UNNAMED --add-exports=jdk.compiler/com.sun.tools.javac.tree=ALL-UNNAMED --add-exports=jdk.compiler/com.sun.tools.javac.util=ALL-UNNAMED --add-exports=java.security.jgss/sun.security.krb5=ALL-UNNAMED --add-opens=java.base/java.lang=ALL-UNNAMED --add-opens=java.base/java.net=ALL-UNNAMED --add-opens=java.base/java.io=ALL-UNNAMED --add-opens=java.base/java.nio=ALL-UNNAMED --add-opens=java.base/sun.nio.ch=ALL-UNNAMED --add-opens=java.base/java.lang.reflect=ALL-UNNAMED --add-opens=java.base/java.text=ALL-UNNAMED --add-opens=java.base/java.time=ALL-UNNAMED --add-opens=java.base/java.util=ALL-UNNAMED --add-opens=java.base/java.util.concurrent=ALL-UNNAMED --add-opens=java.base/java.util.concurrent.atomic=ALL-UNNAMED --add-opens=java.base/java.util.concurrent.locks=ALL-UNNAMED

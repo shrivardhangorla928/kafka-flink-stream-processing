@@ -1,0 +1,24 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ingest-service
+spec:
+  template:
+    spec:
+      initContainers:
+        - name: wait-for-kafka
+          imagePullPolicy: Always
+      containers:
+        - name: ingest-service
+          imagePullPolicy: Always
+          resources:
+            requests:
+              memory: 1Gi
+              # CPU request well under the limit on purpose: a Spring Boot JVM
+              # wants a burst of CPU for class loading in the first 30s and very
+              # little afterwards, so requesting the burst would reserve a core
+              # that idles for the rest of the pod's life.
+              cpu: 250m
+            limits:
+              memory: 1Gi
+              cpu: "1"

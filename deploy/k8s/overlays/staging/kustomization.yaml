@@ -1,0 +1,32 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+# Multi-node, production-shaped: the base's 3-broker Kafka with replication factor
+# 3, 3 alert-service replicas, real resource sizes, images pulled from a registry
+# rather than trusted to be present on the node.
+#
+# Sized for three worker nodes of roughly 4 vCPU / 10 GiB each; the arithmetic is
+# in deploy/k8s/README.md.
+namespace: aware
+
+resources:
+  - ../../base
+  - pdb.yaml
+
+images:
+  - name: aware/ingest-service
+    newTag: 1.0.0
+  - name: aware/alert-service
+    newTag: 1.0.0
+  - name: aware/flink-pipeline
+    newTag: 1.0.0
+
+patches:
+  - path: patches/kafka.yaml
+  - path: patches/postgres.yaml
+  - path: patches/flink-jobmanager.yaml
+  - path: patches/flink-taskmanager.yaml
+  - path: patches/flink-state-pvc.yaml
+  - path: patches/ingest-service.yaml
+  - path: patches/alert-service.yaml
+  - path: patches/topic-init-job.yaml

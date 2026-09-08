@@ -1,0 +1,90 @@
+# Ingest service - the scrape stage of the AWARE pipeline.
+# Every operator-tunable number lives here and is bound onto a validated @ConfigurationProperties
+# class, so a bad value fails the container at start-up rather than at the first scrape.
+server:
+  port: 8080
+  shutdown: graceful
+
+spring:
+  application:
+    name: ingest-service
+  lifecycle:
+    # Long enough for in-flight sends to drain within the producer's delivery timeout budget.
+    timeout-per-shutdown-phase: 30s
+  kafka:
+    # Overridden by the Kubernetes deployment; localhost keeps `mvn spring-boot:run` working.
+    bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:localhost:9092}
+    producer:
+      client-id: ${spring.application.name}
+      # Serializers are supplied programmatically in KafkaProducerConfig so that the shared
+      # JsonCodec configuration is used verbatim; these keys are declared for documentation.
+      key-serializer: org.apache.kafka.common.serialization.StringSerializer
+      value-serializer: org.springframework.kafka.support.serializer.JsonSerializer
+
+aware:
+  kafka:
+    # Bounds the parallelism of every station-keyed operator downstream.
+    partitions: 3
+    # 1 for a single-broker developer machine; the cluster overlay raises this to 3.
+    replication-factor: 1
+  ingest:
+    scrape-interval-ms: 60000
+    source: AWARE_SIMULATOR
+    stations-resource: classpath:stations.json
+    max-batch-size: 1000
+    max-burst-storm-stations: 50
+    simulator:
+      enabled: true
+      # Fixed seed: the evaluation chapter needs runs to be reproducible.
+      seed: 42
+      storm-fraction: 0.12
+      storm-min-cycles: 5
+      storm-max-cycles: 10
+      jitter-fraction: 0.15
+      # 5 readings per 5-minute window x 4-12 mm = 20-60 mm, spanning the downstream
+      # WARNING (15 mm), SEVERE (30 mm) and EXTREME (50 mm) rainfall bands.
+      storm-rainfall-min-mm: 4.0
+      storm-rainfall-max-mm: 12.0
+      # Reservoir bands downstream are 85 / 95 / 100 percent of full reservoir level.
+      storm-reservoir-min-percent: 86.0
+      storm-reservoir-max-percent: 101.5
+      # River bands downstream are 8 / 10 / 12 metres above datum.
+      storm-river-min-metres: 8.2
+      storm-river-max-metres: 12.6
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,prometheus,metrics
+  endpoint:
+    health:
+      show-details: always
+      probes:
+        # The Kubernetes deployment wires its probes to /actuator/health/liveness and
+        # /actuator/health/readiness, which only exist when this is enabled.
+        enabled: true
+  health:
+    livenessstate:
+      enabled: true
+    readinessstate:
+      enabled: true
+  metrics:
+    tags:
+      # Common tag so a single Grafana dashboard can separate the pipeline's services.
+      application: ${spring.application.name}
+  prometheus:
+    metrics:
+      export:
+        enabled: true
+
+logging:
+  level:
+    root: INFO
+    com.vassar.aware: INFO
+    # The producer logs its full effective configuration at INFO on every start; useful once,
+    # noise thereafter.
+    org.apache.kafka.clients.producer.ProducerConfig: WARN
+    org.apache.kafka.common.utils.AppInfoParser: WARN
+  pattern:
+    console: "%d{yyyy-MM-dd HH:mm:ss.SSS} %-5level [%thread] %logger{36} - %msg%n"

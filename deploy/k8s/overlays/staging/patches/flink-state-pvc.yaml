@@ -1,0 +1,14 @@
+# On a multi-node cluster this claim needs a StorageClass that can genuinely serve
+# ReadWriteMany - an NFS or CephFS CSI driver, not a hostpath provisioner. If the
+# target cluster has no such class, the correct fix is not a bigger PVC: it is to
+# point state.checkpoints.dir and state.savepoints.dir at object storage
+# (s3://...) and add flink-s3-fs-presto to the image's plugins directory. That is
+# a documented scope boundary for this dissertation, not a defect in this manifest.
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: flink-state
+spec:
+  resources:
+    requests:
+      storage: 10Gi

@@ -1,0 +1,17 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: kafka-config
+data:
+  # One broker, so the voter list has one entry and every replication factor has to
+  # come down with it - a topic asking for 3 replicas on a 1-broker cluster is
+  # rejected outright, and the internal offsets topic failing to create is a
+  # particularly obscure way for the whole platform to appear to hang.
+  KAFKA_CLUSTER_SIZE: "1"
+  KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: "1"
+  KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: "1"
+  KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: "1"
+  KAFKA_DEFAULT_REPLICATION_FACTOR: "1"
+  KAFKA_MIN_INSYNC_REPLICAS: "1"
+  # Heap sits inside the 1Gi container limit.
+  KAFKA_HEAP_OPTS: "-Xmx512m -Xms512m"

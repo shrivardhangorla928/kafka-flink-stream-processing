@@ -1,0 +1,154 @@
+server:
+  port: 8080
+  tomcat:
+    threads:
+      # Bounded deliberately, and low. This is a read API for a dashboard, not a general web
+      # tier: every request that does real work needs a database connection, so the request
+      # thread ceiling and the connection-pool size have to be sized against each other (see
+      # the Hikari comment below). Boot's default of 200 would let 200 threads queue on a pool
+      # of 20 and turn a traffic spike into 180 threads waiting on connection-timeout.
+      max: 40
+      min-spare: 5
+
+spring:
+  application:
+    name: alert-service
+
+  datasource:
+    url: ${SPRING_DATASOURCE_URL:jdbc:postgresql://localhost:5433/aware}
+    username: ${SPRING_DATASOURCE_USERNAME:aware}
+    password: ${SPRING_DATASOURCE_PASSWORD:aware}
+    driver-class-name: org.postgresql.Driver
+    hikari:
+      pool-name: aware-alert-pool
+
+      # ---------------------------------------------------------------------------------------
+      # Pool sizing. Derived from the concurrent database users this service actually has, not
+      # from Hikari's default of 10:
+      #
+      #   6  consumer threads that hold a connection for a whole batch transaction
+      #      (aware.alert.consumer.concurrency = 3 on alerts.generated.v1
+      #       + 3 on telemetry.aggregated.v1 - one per partition on each topic)
+      # + 12 headroom for concurrent web requests. Not 40 (the Tomcat ceiling): with
+      #      open-in-view disabled a request holds a connection only for the duration of its
+      #      @Transactional query - single-digit milliseconds for the indexed listing queries -
+      #      so 12 connections sustain far more than 12 requests per second. The Tomcat ceiling
+      #      is there to bound the queue, not to be matched one-for-one.
+      # + 2  slack for the Flyway migration at startup and for actuator's health check, which
+      #      must be able to answer even while the consumers are mid-batch. A readiness probe
+      #      that fails because the pool was busy would get the pod killed under load.
+      # = 20
+      #
+      # Checked in the other direction: PostgreSQL's default max_connections is 100. Three
+      # replicas of this service take 60 and leave 40 for migrations, psql sessions and the
+      # other modules - tight but sound. A fourth replica needs max_connections raised first,
+      # which is precisely the kind of coupling worth writing down rather than discovering.
+      maximum-pool-size: 20
+
+      # The six consumer threads are permanently live, so keeping six connections warm means a
+      # poll arriving after a quiet period never pays a TCP handshake inside its transaction.
+      minimum-idle: 6
+
+      # 5s. Worst case a consumer thread waits this long, the batch fails, and the error
+      # handler retries it: 4 attempts of (5s wait + 0.5/1/2/4s backoff) is about 28s, an order
+      # of magnitude below Kafka's max.poll.interval.ms of 300s, so pool exhaustion can never
+      # escalate into the consumer being evicted from the group.
+      connection-timeout: 5000
+
+      # 5 minutes idle, 29 minutes maximum lifetime. The lifetime sits just under the 30 minute
+      # cutoff typical of a cloud database proxy, so Hikari retires connections before the
+      # network does it for us and a query dies mid-transaction.
+      idle-timeout: 300000
+      max-lifetime: 1740000
+
+      # A batch of 500 upserts commits in well under a second; anything holding a connection for
+      # 30s is a leak, and a stack trace at that point is worth far more than a slow query log.
+      leak-detection-threshold: 30000
+
+  jpa:
+    hibernate:
+      # Flyway owns the schema. Hibernate only checks that the mapping still matches it, so a
+      # migration that forgets a column fails at startup - and therefore at the readiness probe,
+      # before the deployment shifts traffic - instead of at the first insert.
+      ddl-auto: validate
+    # Never hold a connection for the whole HTTP request. This single setting is what makes the
+    # pool arithmetic above hold: with it on, a slow client keeps a connection checked out while
+    # rendering, and the effective pool requirement becomes the Tomcat thread count.
+    open-in-view: false
+    properties:
+      hibernate:
+        jdbc:
+          # One round trip per 100 rows instead of per row: a 500-record poll becomes 5 batches.
+          batch_size: 100
+        order_inserts: true
+        order_updates: true
+
+  flyway:
+    enabled: true
+    locations: classpath:db/migration
+    # Baselining an existing database is a manual, deliberate act; doing it automatically would
+    # let a fresh deployment silently skip V1 against a database that merely looked non-empty.
+    baseline-on-migrate: false
+
+  kafka:
+    bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:localhost:9092}
+
+aware:
+  alert:
+    consume-aggregates:
+      # The observability feed. Switch off to give the whole write budget to the alerting path.
+      enabled: ${AWARE_CONSUME_AGGREGATES:true}
+    api:
+      default-page-size: 50
+      # Hard cap. A caller asking for size=100000 gets 200 rows; the listing endpoint must not be
+      # a way to ask the database for the entire alerts table.
+      max-page-size: 200
+      max-timeline-size: 200
+    consumer:
+      # One thread per partition on each topic. Both topics are created with 3 partitions.
+      concurrency: 3
+      # Also the upper bound on one transaction's size, and therefore on how much work is
+      # repeated when a batch is retried.
+      max-poll-records: 500
+      poll-timeout: 3s
+    retry:
+      max-attempts: 4
+      initial-interval: 500ms
+      multiplier: 2.0
+      max-interval: 10s
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,prometheus,metrics
+  endpoint:
+    health:
+      show-details: always
+      probes:
+        # Kubernetes wires /actuator/health/liveness and /actuator/health/readiness to the pod's
+        # probes. Separate groups matter: liveness must not fail when a dependency is down (that
+        # would restart a healthy pod pointlessly), while readiness must, so traffic is withheld
+        # until the database and Kafka are reachable.
+        enabled: true
+  health:
+    livenessstate:
+      enabled: true
+    readinessstate:
+      enabled: true
+  metrics:
+    tags:
+      # Stamped on every meter so a Prometheus query can separate this service's series from the
+      # ingest service's when both scrape into the same instance.
+      application: ${spring.application.name}
+  prometheus:
+    metrics:
+      export:
+        enabled: true
+
+logging:
+  level:
+    com.vassar.aware: INFO
+    # The consumer logs a line per dead-lettered record at ERROR; keeping the container itself at
+    # WARN stops a rebalance storm from burying those lines.
+    org.springframework.kafka.listener: WARN

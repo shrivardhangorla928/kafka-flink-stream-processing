@@ -1,0 +1,52 @@
+# Flink 1.20 configuration for the TaskManagers. See the JobManager file for why
+# this is config.yaml and not flink-conf.yaml.
+
+jobmanager:
+  rpc:
+    address: flink-jobmanager
+    port: 6123
+
+taskmanager:
+  bind-host: 0.0.0.0
+  # One slot per pod. Three pods x one slot fills a parallelism-3 job exactly the
+  # same way one pod x three slots would, but only the first shape can be scaled
+  # by a HorizontalPodAutoscaler - an HPA changes replica counts, it cannot change
+  # a slot count inside a running container. Phase 3 scales this Deployment.
+  numberOfTaskSlots: 1
+  memory:
+    # Under the 2Gi container limit, leaving room for JVM overhead the process
+    # size model does not account for.
+    process:
+      size: 1600m
+  # Both default to 0 (an ephemeral port), which cannot be named in a Service or
+  # probed. Pinning them makes the TaskManager's RPC port checkable.
+  rpc:
+    port: 6122
+  data:
+    port: 6121
+
+blob:
+  server:
+    port: 6124
+
+state:
+  backend:
+    type: hashmap
+  checkpoints:
+    dir: file:///flink-state/checkpoints
+  savepoints:
+    dir: file:///flink-state/savepoints
+
+metrics:
+  reporter:
+    prom:
+      factory:
+        class: org.apache.flink.metrics.prometheus.PrometheusReporterFactory
+      port: 9249
+
+env:
+  java:
+    opts:
+      # Verbatim from the image's own conf/config.yaml; Flink 1.20 on Java 17 will
+      # not start without them.
+      all: --add-exports=java.base/sun.net.util=ALL-UNNAMED --add-exports=java.rmi/sun.rmi.registry=ALL-UNNAMED --add-exports=jdk.compiler/com.sun.tools.javac.api=ALL-UNNAMED --add-exports=jdk.compiler/com.sun.tools.javac.file=ALL-UNNAMED --add-exports=jdk.compiler/com.sun.tools.javac.parser=ALL-UNNAMED --add-exports=jdk.compiler/com.sun.tools.javac.tree=ALL-UNNAMED --add-exports=jdk.compiler/com.sun.tools.javac.util=ALL-UNNAMED --add-exports=java.security.jgss/sun.security.krb5=ALL-UNNAMED --add-opens=java.base/java.lang=ALL-UNNAMED --add-opens=java.base/java.net=ALL-UNNAMED --add-opens=java.base/java.io=ALL-UNNAMED --add-opens=java.base/java.nio=ALL-UNNAMED --add-opens=java.base/sun.nio.ch=ALL-UNNAMED --add-opens=java.base/java.lang.reflect=ALL-UNNAMED --add-opens=java.base/java.text=ALL-UNNAMED --add-opens=java.base/java.time=ALL-UNNAMED --add-opens=java.base/java.util=ALL-UNNAMED --add-opens=java.base/java.util.concurrent=ALL-UNNAMED --add-opens=java.base/java.util.concurrent.atomic=ALL-UNNAMED --add-opens=java.base/java.util.concurrent.locks=ALL-UNNAMED

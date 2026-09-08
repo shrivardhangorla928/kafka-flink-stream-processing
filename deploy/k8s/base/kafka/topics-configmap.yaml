@@ -1,0 +1,25 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: kafka-topics
+  labels:
+    app.kubernetes.io/name: kafka
+    app.kubernetes.io/component: topic-init
+data:
+  KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+  # 3 partitions is the event contract, not a tuning knob: it is the ceiling on
+  # consumer parallelism and is matched by Flink parallelism 3, three TaskManager
+  # slots and three alert-service replicas.
+  TOPIC_PARTITIONS: "3"
+  # Replication factor is the one value that genuinely differs per environment,
+  # which is why it is read from here rather than hard-coded in the Job: the local
+  # overlay runs a single broker and patches this to 1.
+  TOPIC_REPLICATION_FACTOR: "3"
+  TOPIC_MIN_INSYNC_REPLICAS: "2"
+  # Retention: 24h for the two telemetry streams, 7d for alerts and the dead
+  # letter queue, mirroring deploy/docker/docker-compose.yml.
+  RETENTION_MS_TELEMETRY: "86400000"
+  RETENTION_MS_ALERTS: "604800000"
+  # Tool JVMs also want a writable log dir; /tmp is an emptyDir on this pod.
+  LOG_DIR: /tmp/kafka-tool-logs
+  KAFKA_HEAP_OPTS: "-Xmx192m"

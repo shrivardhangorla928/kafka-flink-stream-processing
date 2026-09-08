@@ -1,0 +1,53 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: kafka-config
+  labels:
+    app.kubernetes.io/name: kafka
+    app.kubernetes.io/component: broker
+data:
+  # Consumed by the entrypoint wrapper in the StatefulSet to build the KRaft voter
+  # list. It must match `spec.replicas`; both are changed together by an overlay.
+  KAFKA_CLUSTER_SIZE: "3"
+  KAFKA_HEADLESS_SERVICE: kafka-headless
+
+  # A KRaft cluster id is fixed for the life of the cluster: `kafka-storage format`
+  # stamps it into the log dir, and a broker whose id disagrees with its formatted
+  # volume refuses to start. Keeping it in configuration rather than generating one
+  # per pod is what makes the StatefulSet restart-safe.
+  CLUSTER_ID: aware-stream-platform-01
+
+  # Combined mode: every pod is both a broker and a controller, so there is no
+  # separate controller quorum to run and no ZooKeeper.
+  KAFKA_PROCESS_ROLES: broker,controller
+  KAFKA_LISTENERS: PLAINTEXT://:9092,CONTROLLER://:9093
+  KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT
+  KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
+  KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
+
+  # The image defaults log.dirs to /tmp/kraft-combined-logs; pointing it at the
+  # volumeClaimTemplate mount is what actually makes the broker's data durable.
+  KAFKA_LOG_DIRS: /var/lib/kafka/data
+  # kafka-run-class.sh creates $LOG_DIR at start-up, which a read-only root
+  # filesystem forbids unless it is redirected onto a writable mount.
+  LOG_DIR: /opt/kafka/logs
+
+  # Three brokers, so the internal topics and the platform default can all carry
+  # replication factor 3 with a two-replica in-sync minimum: one broker can be lost
+  # (or rolled) without stalling producers that use acks=all.
+  KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: "3"
+  KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: "3"
+  KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: "2"
+  KAFKA_DEFAULT_REPLICATION_FACTOR: "3"
+  KAFKA_MIN_INSYNC_REPLICAS: "2"
+
+  # 3 partitions is the contract the whole pipeline is sized against: Flink
+  # parallelism 3, three TaskManager slots, three alert-service consumers.
+  KAFKA_NUM_PARTITIONS: "3"
+  KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS: "0"
+  KAFKA_LOG_RETENTION_HOURS: "24"
+  KAFKA_AUTO_CREATE_TOPICS_ENABLE: "true"
+
+  # Heap sits well inside the 2Gi container limit: the broker also needs headroom
+  # for the page cache it mmaps and for direct buffers on the network threads.
+  KAFKA_HEAP_OPTS: "-Xmx1024m -Xms1024m"

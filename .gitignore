@@ -1,0 +1,43 @@
+target/
+!.mvn/wrapper/maven-wrapper.jar
+
+.idea/
+*.iml
+*.ipr
+*.iws
+.vscode/
+.settings/
+.classpath
+.project
+
+*.log
+logs/
+hs_err_pid*
+replay_pid*
+
+.DS_Store
+*.swp
+*~
+
+# Local-only overrides
+.env
+deploy/docker/.env
+
+# Maven shade plugin byproduct (written outside target/)
+dependency-reduced-pom.xml
+
+# SonarQube scanner output
+.scannerwork/
+.sonar/
+
+# Local Kubernetes overrides and real secrets
+deploy/k8s/**/*.local.yaml
+deploy/k8s/**/secret.*.yaml
+
+# Local Flink state / checkpoints
+flink-state/
+checkpoints/
+savepoints/
+
+# Process files
+*.pid

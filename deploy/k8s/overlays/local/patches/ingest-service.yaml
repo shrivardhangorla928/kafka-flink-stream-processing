@@ -1,0 +1,20 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ingest-service
+spec:
+  template:
+    spec:
+      containers:
+        - name: ingest-service
+          resources:
+            requests:
+              # Deliberately below the steady-state footprint: requests are a
+              # scheduling floor and on a single-node workstation overcommitting
+              # them is how six JVMs fit at all. The limit is the number that
+              # actually protects the node.
+              memory: 384Mi
+              cpu: 100m
+            limits:
+              memory: 640Mi
+              cpu: 500m

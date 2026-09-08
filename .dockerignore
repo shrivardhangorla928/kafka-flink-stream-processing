@@ -1,0 +1,11 @@
+**/target/
+**/.git/
+**/.idea/
+**/*.iml
+**/.mvn/
+**/logs/
+**/*.log
+deploy/k8s/
+docs/
+.gitignore
+README.md

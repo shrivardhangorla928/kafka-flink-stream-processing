@@ -1,0 +1,11 @@
+# One node, so minikube's default hostpath StorageClass satisfies ReadWriteMany:
+# the JobManager and all three TaskManagers mount the same directory on the same
+# host. This is exactly the assumption that does not survive a multi-node cluster.
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: flink-state
+spec:
+  resources:
+    requests:
+      storage: 1Gi

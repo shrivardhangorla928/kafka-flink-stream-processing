@@ -1,0 +1,30 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+resources:
+  - serviceaccount.yaml
+  - pvc.yaml
+  - service.yaml
+  - jobmanager-deployment.yaml
+  - taskmanager-deployment.yaml
+
+# Generated rather than written as plain ConfigMaps: the name-suffix hash changes
+# whenever the configuration changes, which rolls the Deployments automatically.
+# A plain ConfigMap would leave the pods running the previous configuration until
+# someone remembered to restart them - exactly the drift the Jenkins phase must not
+# have. Overlays override these with `behavior: replace`.
+configMapGenerator:
+  - name: flink-jobmanager-config
+    files:
+      - config.yaml=config/jobmanager-config.yaml
+    options:
+      labels:
+        app.kubernetes.io/name: flink
+        app.kubernetes.io/component: jobmanager
+  - name: flink-taskmanager-config
+    files:
+      - config.yaml=config/taskmanager-config.yaml
+    options:
+      labels:
+        app.kubernetes.io/name: flink
+        app.kubernetes.io/component: taskmanager

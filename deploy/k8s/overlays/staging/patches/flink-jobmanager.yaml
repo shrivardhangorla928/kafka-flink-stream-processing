@@ -1,0 +1,26 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: flink-jobmanager
+spec:
+  template:
+    spec:
+      initContainers:
+        - name: flink-conf
+          imagePullPolicy: Always
+        - name: wait-for-kafka
+          imagePullPolicy: Always
+      containers:
+        - name: jobmanager
+          imagePullPolicy: Always
+          resources:
+            # requests == limits on memory: a JVM configured with a fixed process
+            # size does not benefit from being schedulable into memory it will
+            # never be allowed to use, and matching the two keeps the pod out of
+            # the first tier the kubelet evicts under node pressure.
+            requests:
+              memory: 2Gi
+              cpu: 500m
+            limits:
+              memory: 2Gi
+              cpu: "1"

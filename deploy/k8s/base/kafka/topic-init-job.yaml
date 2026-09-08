@@ -1,0 +1,100 @@
+# One-shot topic provisioning.
+#
+# The services would auto-create their topics, but auto-creation uses the broker
+# default partition count and gives no control over retention or min ISR. Creating
+# them explicitly pins the event contract the rest of the platform is sized against.
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: kafka-topic-init
+  labels:
+    app.kubernetes.io/name: kafka
+    app.kubernetes.io/component: topic-init
+spec:
+  # The Job object is immutable once created, so it is deleted shortly after it
+  # succeeds; a later `kubectl apply -k` then recreates and re-runs it. Every
+  # command below is --if-not-exists, so re-running is a no-op.
+  ttlSecondsAfterFinished: 600
+  backoffLimit: 6
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: kafka
+        app.kubernetes.io/component: topic-init
+    spec:
+      restartPolicy: OnFailure
+      serviceAccountName: kafka-topic-init
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        runAsGroup: 1000
+        fsGroup: 1000
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: topic-init
+          image: apache/kafka:3.9.1
+          imagePullPolicy: IfNotPresent
+          command:
+            - /bin/bash
+            - -c
+            - |
+              set -euo pipefail
+
+              echo "waiting for ${KAFKA_BOOTSTRAP_SERVERS} to answer a metadata request ..."
+              declare -i attempt=0
+              until /opt/kafka/bin/kafka-topics.sh \
+                      --bootstrap-server "${KAFKA_BOOTSTRAP_SERVERS}" --list >/dev/null 2>&1; do
+                attempt+=1
+                if (( attempt > 60 )); then
+                  echo "kafka was still unreachable after 5 minutes" >&2
+                  exit 1
+                fi
+                echo "  not ready yet (attempt ${attempt}/60)"
+                sleep 5
+              done
+              echo "kafka is reachable"
+
+              create() {
+                echo "--- ${1}"
+                /opt/kafka/bin/kafka-topics.sh \
+                  --bootstrap-server "${KAFKA_BOOTSTRAP_SERVERS}" \
+                  --create --if-not-exists \
+                  --topic "${1}" \
+                  --partitions "${TOPIC_PARTITIONS}" \
+                  --replication-factor "${TOPIC_REPLICATION_FACTOR}" \
+                  --config retention.ms="${2}" \
+                  --config min.insync.replicas="${TOPIC_MIN_INSYNC_REPLICAS}"
+              }
+
+              create telemetry.raw.v1        "${RETENTION_MS_TELEMETRY}"
+              create telemetry.aggregated.v1 "${RETENTION_MS_TELEMETRY}"
+              create alerts.generated.v1     "${RETENTION_MS_ALERTS}"
+              create telemetry.dlq.v1        "${RETENTION_MS_ALERTS}"
+
+              echo "--- resulting topic layout ---"
+              /opt/kafka/bin/kafka-topics.sh \
+                --bootstrap-server "${KAFKA_BOOTSTRAP_SERVERS}" --describe
+          envFrom:
+            - configMapRef:
+                name: kafka-topics
+          resources:
+            requests:
+              memory: 256Mi
+              cpu: 100m
+            limits:
+              memory: 512Mi
+              cpu: 500m
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop:
+                - ALL
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: tmp
+          emptyDir: {}

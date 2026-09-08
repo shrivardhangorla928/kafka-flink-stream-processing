@@ -1,0 +1,218 @@
+# Flink in application mode: this Deployment IS the job. `standalone-job` runs the
+# job's main() on the JobManager itself, so one cluster owns exactly one job and its
+# lifecycle is the Deployment's lifecycle - deleting the Deployment stops the job,
+# rolling the image redeploys it. A session cluster would need a separate submission
+# step whose success is invisible to Kubernetes, which is how a "healthy" Flink
+# cluster ends up running no job at all.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: flink-jobmanager
+  labels:
+    app.kubernetes.io/name: flink
+    app.kubernetes.io/component: jobmanager
+    app.kubernetes.io/version: 1.0.0
+spec:
+  replicas: 1
+  strategy:
+    # Recreate, not RollingUpdate: two JobManagers without HA both try to own the
+    # same job and the same checkpoint directory.
+    type: Recreate
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: flink
+      app.kubernetes.io/component: jobmanager
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: flink
+        app.kubernetes.io/component: jobmanager
+        app.kubernetes.io/version: 1.0.0
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "9249"
+        prometheus.io/path: /metrics
+    spec:
+      serviceAccountName: flink-jobmanager
+      automountServiceAccountToken: false
+      terminationGracePeriodSeconds: 60
+      securityContext:
+        runAsNonRoot: true
+        # The image's own `flink` account. The entrypoint would gosu down to it
+        # from root; starting as 9999 means the drop already happened.
+        runAsUser: 9999
+        runAsGroup: 9999
+        fsGroup: 9999
+        seccompProfile:
+          type: RuntimeDefault
+      initContainers:
+        # The image's entrypoint rewrites conf/config.yaml in place (to apply
+        # JOB_MANAGER_RPC_ADDRESS and blob.server.port), so the conf directory has
+        # to be writable - which a ConfigMap volume never is. Copying the image's
+        # own conf directory into an emptyDir and then overlaying config.yaml keeps
+        # the log4j/logback files Flink's start scripts expect, which a bare
+        # ConfigMap mount over /opt/flink/conf would hide.
+        - name: flink-conf
+          image: aware/flink-pipeline:1.0.0
+          imagePullPolicy: IfNotPresent
+          command:
+            - /bin/bash
+            - -c
+            - |
+              set -euo pipefail
+              cp -a /opt/flink/conf/. /writable-conf/
+              cp /config-source/config.yaml /writable-conf/config.yaml
+              echo "--- effective /opt/flink/conf ---"
+              ls -l /writable-conf
+          resources:
+            requests:
+              memory: 64Mi
+              cpu: 50m
+            limits:
+              memory: 128Mi
+              cpu: 200m
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop:
+                - ALL
+          volumeMounts:
+            - name: flink-conf
+              mountPath: /writable-conf
+            - name: config-source
+              mountPath: /config-source
+              readOnly: true
+        # Ordering gate. The Kafka source retries metadata lookups on its own, but
+        # starting the job before the broker exists fills the JobManager log with
+        # restart-strategy noise that hides real failures during a demo.
+        - name: wait-for-kafka
+          image: aware/flink-pipeline:1.0.0
+          imagePullPolicy: IfNotPresent
+          command:
+            - /bin/bash
+            - -c
+            - |
+              set -euo pipefail
+              echo "waiting for ${KAFKA_HOST}:${KAFKA_PORT} ..."
+              declare -i attempt=0
+              until (echo > /dev/tcp/${KAFKA_HOST}/${KAFKA_PORT}) 2>/dev/null; do
+                attempt+=1
+                if (( attempt > 90 )); then
+                  echo "kafka was still unreachable after 3 minutes" >&2
+                  exit 1
+                fi
+                sleep 2
+              done
+              echo "kafka is reachable"
+          env:
+            - name: KAFKA_HOST
+              value: kafka
+            - name: KAFKA_PORT
+              value: "9092"
+          resources:
+            requests:
+              memory: 32Mi
+              cpu: 25m
+            limits:
+              memory: 64Mi
+              cpu: 100m
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop:
+                - ALL
+      containers:
+        - name: jobmanager
+          image: aware/flink-pipeline:1.0.0
+          imagePullPolicy: IfNotPresent
+          # The image's ENTRYPOINT is Flink's docker-entrypoint.sh; these are its
+          # arguments. Everything after the class name is passed to the job's
+          # main(), where PipelineConfig resolves it.
+          args:
+            - standalone-job
+            - --job-classname
+            - com.vassar.aware.flink.TelemetryPipelineJob
+            - --kafka.bootstrap.servers
+            - kafka:9092
+            - --source.start.offset
+            - latest
+          ports:
+            - name: rpc
+              containerPort: 6123
+              protocol: TCP
+            - name: blob
+              containerPort: 6124
+              protocol: TCP
+            - name: web
+              containerPort: 8081
+              protocol: TCP
+            - name: metrics
+              containerPort: 9249
+              protocol: TCP
+          env:
+            # Without this the entrypoint sets jobmanager.rpc.address to the pod's
+            # own hostname, which nothing else in the cluster can resolve.
+            - name: JOB_MANAGER_RPC_ADDRESS
+              value: flink-jobmanager
+          resources:
+            requests:
+              memory: 1Gi
+              cpu: 500m
+            limits:
+              # Must stay above jobmanager.memory.process.size (1600m) in config.yaml.
+              memory: 2Gi
+              cpu: "1"
+          # /overview is served only after the REST endpoint and the dispatcher are
+          # both up, which for application mode also means the job graph was built.
+          startupProbe:
+            httpGet:
+              path: /overview
+              port: web
+            periodSeconds: 5
+            # 36 x 5s = 180s: JVM start plus building the job graph on the
+            # JobManager, which for application mode happens before the REST
+            # endpoint answers.
+            failureThreshold: 36
+          readinessProbe:
+            httpGet:
+              path: /overview
+              port: web
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 3
+          livenessProbe:
+            tcpSocket:
+              port: rpc
+            periodSeconds: 20
+            timeoutSeconds: 5
+            failureThreshold: 5
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop:
+                - ALL
+          volumeMounts:
+            - name: flink-conf
+              mountPath: /opt/flink/conf
+            - name: flink-state
+              mountPath: /flink-state
+            - name: flink-log
+              mountPath: /opt/flink/log
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: config-source
+          configMap:
+            name: flink-jobmanager-config
+        - name: flink-conf
+          emptyDir: {}
+        - name: flink-log
+          emptyDir: {}
+        - name: tmp
+          emptyDir: {}
+        - name: flink-state
+          persistentVolumeClaim:
+            claimName: flink-state

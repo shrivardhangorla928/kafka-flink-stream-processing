@@ -1,0 +1,22 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: flink-taskmanager
+spec:
+  # Still three, still one slot each. Shrinking to one pod would fit the budget
+  # more easily but would remove the thing phase 3 measures - scaling the pipeline
+  # by scaling pods.
+  replicas: 3
+  template:
+    spec:
+      containers:
+        - name: taskmanager
+          resources:
+            requests:
+              memory: 640Mi
+              cpu: 250m
+            limits:
+              # taskmanager.memory.process.size is 1024m in this overlay's
+              # config.yaml, 256Mi under the limit.
+              memory: 1280Mi
+              cpu: "1"

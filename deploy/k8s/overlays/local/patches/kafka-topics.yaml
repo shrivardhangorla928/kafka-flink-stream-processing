@@ -1,0 +1,9 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: kafka-topics
+data:
+  # Partition count is unchanged at 3 - it is the event contract and the whole
+  # point of provisioning topics explicitly. Only durability drops.
+  TOPIC_REPLICATION_FACTOR: "1"
+  TOPIC_MIN_INSYNC_REPLICAS: "1"

@@ -1,0 +1,20 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: flink-taskmanager
+spec:
+  template:
+    spec:
+      initContainers:
+        - name: flink-conf
+          imagePullPolicy: Always
+      containers:
+        - name: taskmanager
+          imagePullPolicy: Always
+          resources:
+            requests:
+              memory: 2Gi
+              cpu: 500m
+            limits:
+              memory: 2Gi
+              cpu: "1"

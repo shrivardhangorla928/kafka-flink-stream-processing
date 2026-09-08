@@ -1,0 +1,27 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: ingest-service-config
+  labels:
+    app.kubernetes.io/name: ingest-service
+    app.kubernetes.io/component: api
+data:
+  # Same variable name the Compose stand-up uses, so the application binds it the
+  # same way in both environments.
+  KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+
+  # Spring Boot enables the liveness/readiness health groups automatically when it
+  # detects Kubernetes, and the probes below depend on them existing. Stating it
+  # explicitly means the manifests do not silently break if that autodetection
+  # changes or if the pod is run outside a cluster for debugging.
+  MANAGEMENT_ENDPOINT_HEALTH_PROBES_ENABLED: "true"
+  MANAGEMENT_ENDPOINTS_WEB_EXPOSURE_INCLUDE: health,info,metrics,prometheus
+  MANAGEMENT_ENDPOINT_HEALTH_SHOWDETAILS: always
+  # Phase 3 scrapes /actuator/prometheus; a common tag keeps the two services'
+  # series distinguishable in one Grafana dashboard.
+  MANAGEMENT_METRICS_TAGS_APPLICATION: ingest-service
+
+  # Give in-flight requests a bounded window to finish when the pod is terminating.
+  # 20s here plus the 10s preStop sleep is 30s, inside the 45s grace period.
+  SERVER_SHUTDOWN: graceful
+  SPRING_LIFECYCLE_TIMEOUTPERSHUTDOWNPHASE: 20s

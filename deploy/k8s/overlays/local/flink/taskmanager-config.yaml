@@ -1,0 +1,44 @@
+# Local (minikube) TaskManager configuration. Identical to the base file except for
+# taskmanager.memory.process.size, which tracks the smaller container limit set in
+# patches/flink-taskmanager.yaml.
+
+jobmanager:
+  rpc:
+    address: flink-jobmanager
+    port: 6123
+
+taskmanager:
+  bind-host: 0.0.0.0
+  numberOfTaskSlots: 1
+  memory:
+    # Container limit is 1280Mi here; 1024m leaves 256Mi of slack.
+    process:
+      size: 1024m
+  rpc:
+    port: 6122
+  data:
+    port: 6121
+
+blob:
+  server:
+    port: 6124
+
+state:
+  backend:
+    type: hashmap
+  checkpoints:
+    dir: file:///flink-state/checkpoints
+  savepoints:
+    dir: file:///flink-state/savepoints
+
+metrics:
+  reporter:
+    prom:
+      factory:
+        class: org.apache.flink.metrics.prometheus.PrometheusReporterFactory
+      port: 9249
+
+env:
+  java:
+    opts:
+      all: --add-exports=java.base/sun.net.util=ALL-UNNAMED --add-exports=java.rmi/sun.rmi.registry=ALL-UNNAMED --add-exports=jdk.compiler/com.sun.tools.javac.api=ALL-UNNAMED --add-exports=jdk.compiler/com.sun.tools.javac.file=ALL-UNNAMED --add-exports=jdk.compiler/com.sun.tools.javac.parser=ALL-UNNAMED --add-exports=jdk.compiler/com.sun.tools.javac.tree=ALL-UNNAMED --add-exports=jdk.compiler/com.sun.tools.javac.util=ALL-UNNAMED --add-exports=java.security.jgss/sun.security.krb5=ALL-UNNAMED --add-opens=java.base/java.lang=ALL-UNNAMED --add-opens=java.base/java.net=ALL-UNNAMED --add-opens=java.base/java.io=ALL-UNNAMED --add-opens=java.base/java.nio=ALL-UNNAMED --add-opens=java.base/sun.nio.ch=ALL-UNNAMED --add-opens=java.base/java.lang.reflect=ALL-UNNAMED --add-opens=java.base/java.text=ALL-UNNAMED --add-opens=java.base/java.time=ALL-UNNAMED --add-opens=java.base/java.util=ALL-UNNAMED --add-opens=java.base/java.util.concurrent=ALL-UNNAMED --add-opens=java.base/java.util.concurrent.atomic=ALL-UNNAMED --add-opens=java.base/java.util.concurrent.locks=ALL-UNNAMED

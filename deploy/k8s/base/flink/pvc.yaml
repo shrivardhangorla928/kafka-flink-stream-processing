@@ -1,0 +1,25 @@
+# Checkpoint and savepoint storage.
+#
+# ReadWriteMany because a checkpoint is written by all three TaskManagers while the
+# JobManager writes the _metadata that ties the pieces together; a checkpoint whose
+# parts live on different pods' filesystems cannot be restored from.
+#
+# Scope boundary: on a single-node minikube the default hostpath StorageClass
+# satisfies RWX because every pod is on the same node, which is what the local
+# overlay relies on. A genuinely multi-node cluster needs either an RWX-capable
+# CSI driver or - the production answer - object storage, by changing the two
+# state.* URIs in the Flink config to s3:// and adding the S3 filesystem plugin.
+# Neither is in scope for this dissertation; see deploy/k8s/README.md.
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: flink-state
+  labels:
+    app.kubernetes.io/name: flink
+    app.kubernetes.io/component: state
+spec:
+  accessModes:
+    - ReadWriteMany
+  resources:
+    requests:
+      storage: 2Gi

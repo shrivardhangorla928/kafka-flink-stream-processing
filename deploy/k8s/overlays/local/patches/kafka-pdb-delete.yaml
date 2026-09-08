@@ -1,0 +1,9 @@
+# With one broker there is nothing to budget: minAvailable 2 can never be met, and
+# any PodDisruptionBudget over a single replica blocks `kubectl drain` outright.
+# Removing it is more honest than pretending a single-node cluster has a
+# disruption story.
+$patch: delete
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: kafka

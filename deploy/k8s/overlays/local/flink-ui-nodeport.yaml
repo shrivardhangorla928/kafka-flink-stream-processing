@@ -1,0 +1,21 @@
+# A second Service for the web UI rather than turning flink-jobmanager itself into
+# a NodePort: that would also allocate node ports for the RPC and blob ports, which
+# nothing outside the cluster should ever reach.
+apiVersion: v1
+kind: Service
+metadata:
+  name: flink-jobmanager-ui
+  labels:
+    app.kubernetes.io/name: flink
+    app.kubernetes.io/component: jobmanager
+spec:
+  type: NodePort
+  selector:
+    app.kubernetes.io/name: flink
+    app.kubernetes.io/component: jobmanager
+  ports:
+    - name: web
+      port: 8081
+      targetPort: web
+      protocol: TCP
+      nodePort: 30081

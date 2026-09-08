@@ -1,0 +1,22 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: alert-service
+spec:
+  template:
+    spec:
+      initContainers:
+        - name: wait-for-postgres
+          imagePullPolicy: Always
+        - name: wait-for-kafka
+          imagePullPolicy: Always
+      containers:
+        - name: alert-service
+          imagePullPolicy: Always
+          resources:
+            requests:
+              memory: 1Gi
+              cpu: 250m
+            limits:
+              memory: 1Gi
+              cpu: "1"

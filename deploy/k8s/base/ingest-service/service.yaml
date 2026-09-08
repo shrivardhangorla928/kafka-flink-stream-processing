@@ -1,0 +1,23 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: ingest-service
+  labels:
+    app.kubernetes.io/name: ingest-service
+    app.kubernetes.io/component: api
+    # Selector handle for a future Prometheus Operator ServiceMonitor.
+    monitoring: aware
+  annotations:
+    prometheus.io/scrape: "true"
+    prometheus.io/port: "8080"
+    prometheus.io/path: /actuator/prometheus
+spec:
+  type: ClusterIP
+  selector:
+    app.kubernetes.io/name: ingest-service
+    app.kubernetes.io/component: api
+  ports:
+    - name: http
+      port: 80
+      targetPort: http
+      protocol: TCP
