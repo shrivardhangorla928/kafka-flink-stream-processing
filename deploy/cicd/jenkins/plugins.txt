@@ -1,0 +1,36 @@
+# Plugins baked into the controller image. Versions are resolved by
+# jenkins-plugin-cli against the Jenkins version in the Dockerfile, which pulls
+# each plugin's dependencies too - so this list is only the things the pipeline
+# names directly, not the full closure.
+
+# --- pipeline core -----------------------------------------------------------
+workflow-aggregator
+pipeline-stage-view
+pipeline-utility-steps
+
+# --- source control ----------------------------------------------------------
+git
+
+# --- build tooling -----------------------------------------------------------
+# Publishes the surefire/failsafe XML as Jenkins test results
+junit
+# Reads the JaCoCo XML so coverage is visible in Jenkins as well as in Sonar
+coverage
+
+# --- quality gate ------------------------------------------------------------
+# Provides withSonarQubeEnv{} and waitForQualityGate{}
+sonar
+
+# --- configuration as code ---------------------------------------------------
+configuration-as-code
+# Lets jenkins.yaml declare the pipeline job itself
+job-dsl
+
+# --- credentials -------------------------------------------------------------
+credentials
+credentials-binding
+plain-credentials
+
+# --- housekeeping ------------------------------------------------------------
+timestamper
+ws-cleanup

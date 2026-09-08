@@ -1,0 +1,174 @@
+# CI/CD stand-up: Jenkins controller, SonarQube, and SonarQube's database.
+#
+#   cd deploy/cicd
+#   cp .env.example .env      # then edit it - SONAR_TOKEN is filled in by bootstrap.sh
+#   docker compose up -d --build
+#
+# Host ports are shifted off the defaults because this workstation already runs an
+# unrelated Jenkins on 8099/50001:
+#   Jenkins -> 8100        SonarQube -> 9000
+#
+# Prerequisite that is NOT set here because it is a host kernel setting and containers
+# share it: SonarQube's embedded Elasticsearch refuses to start unless
+#   sudo sysctl -w vm.max_map_count=262144
+# See README.md.
+
+name: stream-cicd
+
+services:
+
+  # ---------------------------------------------------------------------------
+  # SonarQube's database.
+  #
+  # SonarQube ships an embedded H2 database, but it is explicitly evaluation-only
+  # and cannot be upgraded across versions - analysis history would be lost on the
+  # first image bump. A real PostgreSQL costs one container and makes the quality
+  # trend over the dissertation's phases durable, which is the whole point of
+  # tracking it.
+  # ---------------------------------------------------------------------------
+  sonar-db:
+    image: postgres:16-alpine
+    container_name: sonar-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: sonar
+      POSTGRES_USER: sonar
+      POSTGRES_PASSWORD: ${SONAR_DB_PASSWORD}
+      # Same reasoning as the application's database: initdb's default locale
+      # collation makes index scans locale-dependent for no benefit here.
+      POSTGRES_INITDB_ARGS: "--encoding=UTF8 --locale=C"
+    volumes:
+      - sonar-db-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U sonar -d sonar"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    mem_limit: 512m
+
+  # ---------------------------------------------------------------------------
+  # SonarQube.
+  # ---------------------------------------------------------------------------
+  sonarqube:
+    image: sonarqube:community
+    container_name: sonarqube
+    restart: unless-stopped
+    depends_on:
+      sonar-db:
+        condition: service_healthy
+    environment:
+      SONAR_JDBC_URL: jdbc:postgresql://sonar-db:5432/sonar
+      SONAR_JDBC_USERNAME: sonar
+      SONAR_JDBC_PASSWORD: ${SONAR_DB_PASSWORD}
+      # SonarQube's embedded Elasticsearch defaults to mmapfs for its index, which is
+      # what makes it demand vm.max_map_count >= 262144 - a host kernel setting that
+      # needs root and that no container option can substitute for.
+      #
+      # Switching the store to niofs removes that requirement entirely, so this stack
+      # comes up on a stock Ubuntu box (65530) with no sudo and no host changes. The
+      # cost is that index reads go through the filesystem cache rather than mapped
+      # memory, which is measurable on a multi-million-issue instance and irrelevant
+      # for one project's analysis history.
+      #
+      # If you would rather have the tuned default, raise the sysctl instead and
+      # delete this line - see README.md.
+      SONAR_SEARCH_JAVAADDITIONALOPTS: "-Dnode.store.allow_mmap=false"
+    ports:
+      - "9000:9000"
+    volumes:
+      - sonarqube-data:/opt/sonarqube/data
+      - sonarqube-extensions:/opt/sonarqube/extensions
+      - sonarqube-logs:/opt/sonarqube/logs
+    ulimits:
+      nofile:
+        soft: 65536
+        hard: 65536
+      nproc: 8192
+    healthcheck:
+      # /api/system/status returns UP only once the web server AND the compute engine
+      # are both ready to accept an analysis report; the HTTP port opens well before that.
+      #
+      # curl, not wget: the SonarQube image ships curl and no wget, so a wget probe
+      # fails with "wget: not found" on every attempt. The container then never turns
+      # healthy, and anything with `depends_on: condition: service_healthy` - Jenkins,
+      # here - sits at Created forever, which looks like a Jenkins problem.
+      test: ["CMD-SHELL", "curl -fsS http://localhost:9000/api/system/status | grep -q '\"status\":\"UP\"'"]
+      interval: 15s
+      timeout: 10s
+      retries: 40
+      start_period: 90s
+    mem_limit: 4g
+
+  # ---------------------------------------------------------------------------
+  # Jenkins controller.
+  #
+  # Two things make this container able to deploy to the cluster:
+  #
+  #  1. It is attached to the `minikube` Docker network as well as this stack's own,
+  #     so 192.168.49.2 - the minikube node - is routable. Docker's default
+  #     inter-bridge isolation would otherwise drop that traffic.
+  #  2. The host's ~/.minikube is bind-mounted at the identical absolute path, so the
+  #     cert paths embedded in the kubeconfig and in DOCKER_CERT_PATH resolve
+  #     unchanged inside the container. No certificate is copied or regenerated.
+  #
+  # There is deliberately no Docker socket mount and no dind sidecar: images have to
+  # be built in minikube's daemon to be visible to the kubelet under
+  # imagePullPolicy: IfNotPresent, and DOCKER_HOST points there directly.
+  # ---------------------------------------------------------------------------
+  jenkins:
+    build:
+      context: ./jenkins
+      dockerfile: Dockerfile
+    image: stream/jenkins:1.0.0
+    container_name: stream-jenkins
+    restart: unless-stopped
+    depends_on:
+      sonarqube:
+        condition: service_healthy
+    environment:
+      JENKINS_ADMIN_ID: ${JENKINS_ADMIN_ID}
+      JENKINS_ADMIN_PASSWORD: ${JENKINS_ADMIN_PASSWORD}
+      JENKINS_URL: http://jenkins:8080/
+      SONAR_HOST_URL: http://sonarqube:9000
+      SONAR_TOKEN: ${SONAR_TOKEN}
+      GIT_REPO_URL: ${GIT_REPO_URL}
+      GIT_BRANCH: ${GIT_BRANCH}
+      # minikube's Docker daemon, over TLS, using the host's minikube certs.
+      DOCKER_HOST: tcp://192.168.49.2:2376
+      DOCKER_TLS_VERIFY: "1"
+      DOCKER_CERT_PATH: /home/shrivardhan/.minikube/certs
+      KUBECONFIG: /var/jenkins_home/.kube/config
+    ports:
+      - "8100:8080"
+      - "50002:50000"
+    volumes:
+      - jenkins-home:/var/jenkins_home
+      # Read-only: the pipeline reads certs, it never rewrites the cluster's identity.
+      - ${HOME}/.minikube:/home/shrivardhan/.minikube:ro
+      - ${HOME}/.kube/config:/var/jenkins_home/.kube/config:ro
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://localhost:8080/login >/dev/null"]
+      interval: 15s
+      timeout: 10s
+      retries: 20
+      start_period: 60s
+    mem_limit: 3g
+    networks:
+      - default
+      - minikube
+
+volumes:
+  jenkins-home:
+  sonarqube-data:
+  sonarqube-extensions:
+  sonarqube-logs:
+  sonar-db-data:
+
+networks:
+  default:
+    name: stream-cicd
+  # Created by `minikube start`. Declared external so compose attaches to it rather
+  # than trying to manage it - deleting this stack must not delete the cluster's network.
+  minikube:
+    external: true
+    name: minikube

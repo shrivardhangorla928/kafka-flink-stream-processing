@@ -1,0 +1,135 @@
+# Jenkins Configuration as Code.
+#
+# Reapplied on every container boot, so the controller's configuration lives in
+# this file rather than in the JENKINS_HOME volume. Nothing here has to be clicked
+# through the setup wizard, and a lost volume costs nothing but build history.
+#
+# Values written as ${NAME} are read from the container's environment - see
+# deploy/cicd/docker-compose.yml and deploy/cicd/.env.example.
+
+jenkins:
+  systemMessage: >
+    Stream Processing - CI/CD controller.
+    Pipeline: build -> test -> SonarQube quality gate -> images -> deploy to Kubernetes.
+    Configured by JCasC from deploy/cicd/jenkins/jenkins.yaml; do not edit through the UI.
+
+  # Two executors on the controller. The pipeline is one job that runs stages in
+  # sequence, so a second executor exists only so a manual re-run does not queue
+  # behind a running build. Real agents are out of scope for a single-workstation
+  # setup and would add a JNLP hop for no benefit.
+  numExecutors: 2
+  mode: NORMAL
+  labelString: "built-in maven docker kubectl"
+
+  securityRealm:
+    local:
+      allowsSignup: false
+      users:
+        - id: "${JENKINS_ADMIN_ID}"
+          password: "${JENKINS_ADMIN_PASSWORD}"
+
+  authorizationStrategy:
+    loggedInUsersCanDoAnything:
+      allowAnonymousRead: false
+
+  # No crumbIssuer block on purpose. Jenkins enables CSRF protection with the default
+  # issuer already, and `standard: { excludeClientIPFromCrumb: ... }` is no longer a
+  # CasC-settable attribute on DefaultCrumbIssuer in current Jenkins - declaring it
+  # aborts boot outright with UnknownAttributesException, not a warning.
+
+security:
+  # The pipeline is defined in the repository, and the repository is trusted, so
+  # script approval would only ever be a prompt to click through.
+  globalJobDslSecurityConfiguration:
+    useScriptSecurity: false
+
+credentials:
+  system:
+    domainCredentials:
+      - credentials:
+          - string:
+              scope: GLOBAL
+              id: "sonar-token"
+              secret: "${SONAR_TOKEN}"
+              description: "SonarQube analysis token (user token, not a password)"
+
+unclassified:
+  # Makes withSonarQubeEnv('sonarqube') resolve, and tells the Sonar plugin where to
+  # look when waitForQualityGate() asks for the result of an analysis task.
+  sonarGlobalConfiguration:
+    buildWrapperEnabled: true
+    installations:
+      # Valid attributes on hudson.plugins.sonar.SonarInstallation are name,
+      # serverUrl, credentialsId, webhookSecretId, mojoVersion,
+      # additionalProperties, additionalAnalysisProperties and triggers. Anything
+      # else - `triggersJob`, for instance - aborts boot with
+      # UnknownAttributesException rather than being ignored.
+      - name: "sonarqube"
+        serverUrl: "${SONAR_HOST_URL}"
+        credentialsId: "sonar-token"
+
+  # waitForQualityGate() blocks until SonarQube POSTs the analysis result back to
+  # /sonarqube-webhook/. The webhook is created against this URL by
+  # deploy/cicd/sonarqube/bootstrap.sh.
+  location:
+    url: "${JENKINS_URL}"
+    adminAddress: "unconfigured@nowhere"
+
+tool:
+  git:
+    installations:
+      - name: "Default"
+        home: "git"
+  maven:
+    installations:
+      - name: "maven-3.9.9"
+        home: "/opt/maven"
+  jdk:
+    installations:
+      - name: "jdk-21"
+        home: "/opt/java/openjdk"
+
+jobs:
+  - script: >
+      pipelineJob('stream-processing') {
+        description('''
+          Kafka + Flink stream processing pipeline.
+          Build, test, SonarQube quality gate, container images, deploy to Kubernetes.
+          Defined by Jenkinsfile at the root of the repository.
+        '''.stripIndent().trim())
+
+        logRotator {
+          numToKeep(30)
+          artifactNumToKeep(10)
+        }
+
+        parameters {
+          booleanParam('SKIP_QUALITY_GATE', false,
+            'Run the Sonar analysis but do not block on the gate. For debugging the pipeline itself.')
+          booleanParam('DEPLOY', true,
+            'Deploy to the Kubernetes local overlay after the gate passes.')
+        }
+
+        definition {
+          cpsScm {
+            scm {
+              git {
+                remote {
+                  url('${GIT_REPO_URL}')
+                }
+                branches('${GIT_BRANCH}')
+                extensions {
+                  cloneOptions {
+                    shallow(false)
+                    noTags(false)
+                    depth(0)
+                    timeout(20)
+                  }
+                }
+              }
+            }
+            scriptPath('Jenkinsfile')
+            lightweight(false)
+          }
+        }
+      }

@@ -41,3 +41,6 @@ savepoints/
 
 # Process files
 *.pid
+
+# CI/CD stack secrets (SonarQube token, admin passwords)
+deploy/cicd/.env
