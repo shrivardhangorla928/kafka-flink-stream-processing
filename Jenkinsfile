@@ -27,10 +27,10 @@ pipeline {
 
     environment {
         // Persisted in the jenkins-home volume, so only the first build of a fresh
-        // controller pays the full dependency download.
+        // controller pays the full dependency download. It has to sit OUTSIDE the
+        // workspace, because cleanWs() in the post block would otherwise delete it.
         MAVEN_REPO   = '/var/jenkins_home/.m2/repository'
         MAVEN_OPTS   = '-Xmx1536m'
-        MVN          = 'mvn -B -ntp -Dmaven.repo.local=$MAVEN_REPO'
 
         SONAR_PROJECT_KEY = 'stream-processing'
 
@@ -72,7 +72,15 @@ pipeline {
                 // verify, not test: the JaCoCo report is bound to the verify phase and
                 // failsafe's integration tests run there too. `mvn test` would produce
                 // no coverage XML for Sonar to read.
-                sh '$MVN clean verify'
+                //
+                // Double quotes so Groovy substitutes MAVEN_REPO here, at pipeline level.
+                // Writing -Dmaven.repo.local=$MAVEN_REPO inside another environment{}
+                // entry does NOT work: the shell expands the outer variable but will not
+                // re-expand what its value contains, so Maven receives the literal string
+                // "$MAVEN_REPO" and quietly creates a directory of that name inside the
+                // workspace - which cleanWs() then deletes, so every build re-downloads
+                // the whole dependency tree.
+                sh "mvn -B -ntp -Dmaven.repo.local=${MAVEN_REPO} clean verify"
             }
             post {
                 always {
@@ -92,13 +100,13 @@ pipeline {
                 // 'sonarqube' installation declared in JCasC, and records the analysis
                 // task id that the next stage waits on.
                 withSonarQubeEnv('sonarqube') {
-                    sh '''
-                        $MVN sonar:sonar \
-                          -Dsonar.projectKey=$SONAR_PROJECT_KEY \
-                          -Dsonar.projectName="Kafka + Flink Stream Processing" \
-                          -Dsonar.projectVersion=$IMAGE_TAG \
-                          -Dsonar.scm.revision=$(git rev-parse HEAD)
-                    '''
+                    sh """
+                        mvn -B -ntp -Dmaven.repo.local=${MAVEN_REPO} sonar:sonar \
+                          -Dsonar.projectKey=${SONAR_PROJECT_KEY} \
+                          -Dsonar.projectName='Kafka + Flink Stream Processing' \
+                          -Dsonar.projectVersion=${IMAGE_TAG} \
+                          -Dsonar.scm.revision=\$(git rev-parse HEAD)
+                    """
                 }
             }
         }
@@ -157,7 +165,11 @@ pipeline {
             steps {
                 sh '''
                     set -eu
-                    kubectl config use-context minikube
+                    # No `kubectl config use-context` here: KUBECONFIG is the host's
+                    # kubeconfig bind-mounted read-only, and use-context rewrites the file.
+                    # It already carries current-context: minikube, so this is both
+                    # unnecessary and, against a read-only mount, fatal.
+                    kubectl get ns $K8S_NAMESPACE
 
                     # Retag the overlay to this build. kustomize edit rewrites
                     # kustomization.yaml in the workspace only - the change is never

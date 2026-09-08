@@ -42,23 +42,50 @@ api() { curl -fsS -u "$AUTH" "$@"; }
 # ---------------------------------------------------------------------------
 # Read the coverage that was actually measured
 # ---------------------------------------------------------------------------
-say "reading measured coverage for $PROJECT_KEY"
-measured=$(api "$SONAR_URL/api/measures/component?component=${PROJECT_KEY}&metricKeys=coverage" \
-  | sed -n 's/.*"metric":"coverage","value":"\([0-9.]*\)".*/\1/p')
+say "reading the measured values for $PROJECT_KEY"
+measures=$(api "$SONAR_URL/api/measures/component?component=${PROJECT_KEY}&metricKeys=coverage,duplicated_lines_density")
 
-if [[ -z "$measured" ]]; then
+read_measure() {
+  printf '%s' "$measures" | python3 -c "
+import sys, json
+d = json.load(sys.stdin)['component']['measures']
+m = sys.argv[1]
+print(next((x['value'] for x in d if x['metric'] == m), ''))
+" "$1"
+}
+
+measured_cov=$(read_measure coverage)
+measured_dup=$(read_measure duplicated_lines_density)
+
+if [[ -z "$measured_cov" ]]; then
   echo "FATAL: no coverage measure on $PROJECT_KEY." >&2
   echo "       Run an analysis first: mvn verify sonar:sonar" >&2
   exit 1
 fi
-echo "  measured overall coverage: ${measured}%"
+echo "  measured overall coverage:   ${measured_cov}%"
+echo "  measured duplication:        ${measured_dup:-unknown}%"
 
-# Ratchet: floor to the whole percent below, so the gate passes today by a margin of
-# less than one point and fails on any real regression. No rounding up - a threshold
-# above the measured value would fail the build that created it.
-floor=$(python3 -c "import math,sys; print(int(math.floor(float(sys.argv[1]))))" "$measured")
+# Both overall conditions are ratchets derived from what the project actually
+# measures, in the direction that makes today's build pass:
+#   coverage    -> floor to the whole percent BELOW  (a higher bar would fail now)
+#   duplication -> ceil to the whole percent ABOVE   (a lower bar would fail now)
+#
+# The first version of this script hard-coded duplication at 5%. The project measures
+# 7.5%, so that gate would have failed on the day it was created - which is the exact
+# failure this file's header warns about. Deriving the number is the fix; picking a
+# rounder-sounding one is not.
+floor=$(python3 -c "import math,sys; print(int(math.floor(float(sys.argv[1]))))" "$measured_cov")
 COVERAGE_FLOOR="${COVERAGE_FLOOR:-$floor}"
-echo "  overall-coverage condition will be set to >= ${COVERAGE_FLOOR}%"
+
+if [[ -n "$measured_dup" ]]; then
+  ceil=$(python3 -c "import math,sys; print(int(math.ceil(float(sys.argv[1]))))" "$measured_dup")
+else
+  ceil=10
+fi
+DUPLICATION_CEILING="${DUPLICATION_CEILING:-$ceil}"
+
+echo "  -> overall coverage condition:    >= ${COVERAGE_FLOOR}%"
+echo "  -> overall duplication condition: <= ${DUPLICATION_CEILING}%"
 
 # ---------------------------------------------------------------------------
 # Create (or find) the gate
@@ -120,7 +147,7 @@ set_condition new_duplicated_lines_density GT 3
 
 say "conditions on overall code"
 set_condition coverage                     LT "${COVERAGE_FLOOR}"
-set_condition duplicated_lines_density     GT 5
+set_condition duplicated_lines_density     GT "${DUPLICATION_CEILING}"
 
 # ---------------------------------------------------------------------------
 # Bind the gate to the project
