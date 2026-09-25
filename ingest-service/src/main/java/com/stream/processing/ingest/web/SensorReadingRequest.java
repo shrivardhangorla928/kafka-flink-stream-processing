@@ -64,11 +64,6 @@ public record SensorReadingRequest(
     /** Marks readings that entered the pipeline over HTTP rather than from a scraper. */
     public static final String DEFAULT_SOURCE = "REST_API";
 
-    /**
-     * Maps onto the wire event, filling the optional fields. Station metadata that the caller
-     * omitted is completed afterwards from the catalogue by
-     * {@link com.stream.processing.ingest.station.StationRegistry#enrich(SensorReading)}.
-     */
     public SensorReading toReading() {
         SensorReading reading = new SensorReading();
         reading.setReadingId(readingId == null || readingId.isBlank()

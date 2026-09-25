@@ -7,11 +7,6 @@ import com.stream.processing.common.SensorType;
 import com.stream.processing.common.Topics;
 import com.stream.processing.ingest.config.IngestProperties;
 import com.stream.processing.ingest.publish.TelemetryPublisher;
-import com.stream.processing.ingest.scrape.TelemetryScraper;
-import com.stream.processing.ingest.simulator.ReadingSimulator;
-import com.stream.processing.ingest.station.Station;
-import com.stream.processing.ingest.station.StationRegistry;
-import com.stream.processing.ingest.support.StationFixtures;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -33,34 +28,20 @@ import java.util.concurrent.CompletableFuture;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyCollection;
-import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
-import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
-/**
- * Exercises the HTTP contract, including the failure shapes.
- *
- * <p>The error assertions matter as much as the happy paths: a push-based upstream that gets an
- * opaque 500 for a typo in a station id will keep retrying it forever, so each rejection has to
- * come back as a problem document that names the offending field.</p>
- */
 @WebMvcTest(TelemetryController.class)
-@TestPropertySource(properties = {
-        "stream.ingest.max-batch-size=3",
-        "stream.ingest.max-burst-storm-stations=10"
-})
+@TestPropertySource(properties = "stream.ingest.max-batch-size=3")
 class TelemetryControllerTest {
 
     private static final String BASE = "/api/v1/telemetry";
     private static final MediaType PROBLEM_JSON = MediaType.APPLICATION_PROBLEM_JSON;
-
-    /** Small enough that the batch cap can be tested without posting a thousand readings. */
     private static final int MAX_BATCH = 3;
 
     private final ObjectMapper json = JsonCodec.create();
@@ -71,20 +52,6 @@ class TelemetryControllerTest {
     @MockitoBean
     private TelemetryPublisher publisher;
 
-    @MockitoBean
-    private StationRegistry stationRegistry;
-
-    @MockitoBean
-    private ReadingSimulator simulator;
-
-    @MockitoBean
-    private TelemetryScraper scraper;
-
-    /**
-     * The web slice does not run {@code @ConfigurationPropertiesScan}, so the properties bean has
-     * to be contributed here. It is deliberately left unset: Boot binds it from the environment,
-     * which is what makes the {@code @TestPropertySource} values above the ones under test.
-     */
     @TestConfiguration
     static class IngestPropertiesConfiguration {
 
@@ -134,7 +101,6 @@ class TelemetryControllerTest {
         assertThat(published.getReadingId()).as("generated when the caller omits one").isNotBlank();
         assertThat(published.getSource()).isEqualTo(SensorReadingRequest.DEFAULT_SOURCE);
         assertThat(published.getUnit()).isEqualTo(SensorType.RAINFALL.getUnit());
-        verify(stationRegistry).enrich(published);
     }
 
     @Test
@@ -142,7 +108,7 @@ class TelemetryControllerTest {
     void postReadingDefaultsEventTime() throws Exception {
         mockMvc.perform(post(BASE + "/readings")
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content(asJson(Map.of("stationId", "STN-0002", "sensorType", "RIVER_LEVEL",
+                        .content(asJson(Map.of("stationId", "STN-0002", "sensorType", "RAINFALL",
                                 "value", 9.2, "readingId", "client-supplied-1"))))
                 .andExpect(status().isAccepted());
 
@@ -222,8 +188,6 @@ class TelemetryControllerTest {
                         .content(asJson(List.of(readingPayload(), readingPayload()))))
                 .andExpect(status().isAccepted())
                 .andExpect(jsonPath("$.accepted").value(2));
-
-        verify(stationRegistry, org.mockito.Mockito.times(2)).enrich(any());
     }
 
     @Test
@@ -267,66 +231,5 @@ class TelemetryControllerTest {
                 .andExpect(jsonPath("$.title").value("Validation failed"));
 
         verify(publisher, never()).publishAll(anyCollection());
-    }
-
-    @Test
-    @DisplayName("POST /simulate/burst runs an out-of-cycle round and reports the storm state")
-    void burstRunsAnImmediateRound() throws Exception {
-        when(scraper.burst(6)).thenReturn(50);
-        when(simulator.activeStormCount()).thenReturn(7);
-
-        mockMvc.perform(post(BASE + "/simulate/burst").param("stormStations", "6"))
-                .andExpect(status().isAccepted())
-                .andExpect(jsonPath("$.published").value(50))
-                .andExpect(jsonPath("$.requestedStorms").value(6))
-                .andExpect(jsonPath("$.activeStormEpisodes").value(7))
-                .andExpect(jsonPath("$.publishedAt").exists());
-
-        verify(scraper).burst(6);
-    }
-
-    @Test
-    @DisplayName("POST /simulate/burst defaults to forcing no extra storms")
-    void burstDefaultsToNoForcedStorms() throws Exception {
-        when(scraper.burst(0)).thenReturn(50);
-
-        mockMvc.perform(post(BASE + "/simulate/burst"))
-                .andExpect(status().isAccepted())
-                .andExpect(jsonPath("$.requestedStorms").value(0));
-
-        verify(scraper).burst(0);
-    }
-
-    @Test
-    @DisplayName("POST /simulate/burst rejects a negative or oversized storm count")
-    void burstRejectsInvalidStormCounts() throws Exception {
-        mockMvc.perform(post(BASE + "/simulate/burst").param("stormStations", "-1"))
-                .andExpect(status().isBadRequest())
-                .andExpect(jsonPath("$.detail").value("stormStations must not be negative"));
-
-        mockMvc.perform(post(BASE + "/simulate/burst").param("stormStations", "99"))
-                .andExpect(status().isBadRequest())
-                .andExpect(jsonPath("$.detail")
-                        .value("stormStations must not exceed stream.ingest.max-burst-storm-stations=10"));
-
-        verify(scraper, never()).burst(anyInt());
-    }
-
-    @Test
-    @DisplayName("GET /stations returns the catalogue")
-    void getStationsReturnsTheCatalogue() throws Exception {
-        List<Station> catalogue = List.of(StationFixtures.rainfall("STN-0001", 1.2d),
-                StationFixtures.reservoir("STN-0031", 62.0d));
-        when(stationRegistry.all()).thenReturn(catalogue);
-
-        mockMvc.perform(get(BASE + "/stations"))
-                .andExpect(status().isOk())
-                .andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_JSON))
-                .andExpect(jsonPath("$.length()").value(2))
-                .andExpect(jsonPath("$[0].stationId").value("STN-0001"))
-                .andExpect(jsonPath("$[0].sensorType").value("RAINFALL"))
-                .andExpect(jsonPath("$[0].baseline").value(1.2))
-                .andExpect(jsonPath("$[0].enabled").value(true))
-                .andExpect(jsonPath("$[1].sensorType").value("RESERVOIR_LEVEL"));
     }
 }

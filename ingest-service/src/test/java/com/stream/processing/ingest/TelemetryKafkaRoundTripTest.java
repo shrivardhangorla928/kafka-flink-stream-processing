@@ -49,9 +49,10 @@ import static org.assertj.core.api.Assertions.assertThat;
  * only the round-tripped object, because Flink deserialises the bytes with its own mapper: an
  * instant silently written as an epoch decimal would round-trip here and still break downstream.</p>
  *
- * <p>The scheduled simulator is off - the test profile disables it - so nothing competes for the
- * topic, and every wait is bounded so a broker that never comes up fails the build instead of
- * hanging it.</p>
+ * <p>The scheduled {@link TelemetryScraper} is off - the test profile sets
+ * {@code stream.ingest.desweather-scrape-enabled=false} and its {@code @ConditionalOnProperty}
+ * keeps the bean out of the context entirely - so nothing competes for the topic, and every wait
+ * is bounded so a broker that never comes up fails the build instead of hanging it.</p>
  */
 @SpringBootTest
 @ActiveProfiles("test")
@@ -146,8 +147,8 @@ class TelemetryKafkaRoundTripTest {
     }
 
     @Test
-    @DisplayName("the scheduled simulator is off, so nothing else writes to the topic")
-    void scheduledSimulatorIsDisabledInThisSlice() {
+    @DisplayName("the scheduled scraper is off, so nothing else writes to the topic")
+    void scheduledScraperIsDisabledInThisSlice() {
         assertThat(scraperProvider.getIfAvailable()).isNull();
     }
 

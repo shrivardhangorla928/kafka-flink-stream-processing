@@ -28,29 +28,10 @@ stream:
     # 1 for a single-broker developer machine; the cluster overlay raises this to 3.
     replication-factor: 1
   ingest:
-    scrape-interval-ms: 60000
-    source: STREAM_SIMULATOR
-    stations-resource: classpath:stations.json
+    desweather-url: http://desweather.ap.gov.in/webservice/rest/json
+    desweather-poll-interval-ms: 300000
+    desweather-scrape-enabled: true
     max-batch-size: 1000
-    max-burst-storm-stations: 50
-    simulator:
-      enabled: true
-      # Fixed seed: the evaluation chapter needs runs to be reproducible.
-      seed: 42
-      storm-fraction: 0.12
-      storm-min-cycles: 5
-      storm-max-cycles: 10
-      jitter-fraction: 0.15
-      # 5 readings per 5-minute window x 4-12 mm = 20-60 mm, spanning the downstream
-      # WARNING (15 mm), SEVERE (30 mm) and EXTREME (50 mm) rainfall bands.
-      storm-rainfall-min-mm: 4.0
-      storm-rainfall-max-mm: 12.0
-      # Reservoir bands downstream are 85 / 95 / 100 percent of full reservoir level.
-      storm-reservoir-min-percent: 86.0
-      storm-reservoir-max-percent: 101.5
-      # River bands downstream are 8 / 10 / 12 metres above datum.
-      storm-river-min-metres: 8.2
-      storm-river-max-metres: 12.6
 
 management:
   endpoints:

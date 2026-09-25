@@ -34,3 +34,7 @@ plain-credentials
 # --- housekeeping ------------------------------------------------------------
 timestamper
 ws-cleanup
+
+# --- appearance ----------------------------------------------------------------
+# Adds the dark/light/auto theme toggle under user Appearance settings
+theme-manager

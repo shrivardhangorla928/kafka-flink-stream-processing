@@ -37,7 +37,6 @@ public class ApiExceptionHandler {
 
     private static final URI VALIDATION_TYPE = URI.create("urn:stream:problem:validation-failed");
     private static final URI MALFORMED_TYPE = URI.create("urn:stream:problem:malformed-request");
-    private static final URI SIMULATOR_TYPE = URI.create("urn:stream:problem:simulator-disabled");
     private static final URI INTERNAL_TYPE = URI.create("urn:stream:problem:internal-error");
 
     private static final String ERRORS_PROPERTY = "errors";
@@ -99,11 +98,6 @@ public class ApiExceptionHandler {
     @ExceptionHandler(IllegalArgumentException.class)
     public ProblemDetail onIllegalArgument(IllegalArgumentException ex) {
         return problem(HttpStatus.BAD_REQUEST, VALIDATION_TYPE, "Invalid request", ex.getMessage());
-    }
-
-    @ExceptionHandler(SimulatorDisabledException.class)
-    public ProblemDetail onSimulatorDisabled(SimulatorDisabledException ex) {
-        return problem(HttpStatus.SERVICE_UNAVAILABLE, SIMULATOR_TYPE, "Simulator disabled", ex.getMessage());
     }
 
     /**

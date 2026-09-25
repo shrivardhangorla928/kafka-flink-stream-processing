@@ -26,22 +26,13 @@ import java.util.Map;
 import static org.assertj.core.api.Assertions.assertThat;
 
 /**
- * Runs the real topology on a local mini cluster with an in-memory source, so the wiring between
- * parsing, watermarks, windowing and threshold evaluation is exercised end to end without a
- * broker.
- *
- * <p>Event time is driven by {@link PerRecordWatermarks} rather than the production periodic
- * strategy. That is the only way to make lateness deterministic in a bounded job: with the
- * production 200 ms watermark timer, whether the late record lands before or after the window
- * fires depends on thread scheduling.</p>
+ * Runs the real topology on a local mini cluster with an in-memory source, so parsing,
+ * watermarks and rainfall accumulation are exercised end to end without a broker.
  */
 @Timeout(180)
 class TelemetryPipelineJobTest {
 
-    /** Aligned to a five-minute boundary, so the windows are exactly the ones being asserted. */
     private static final Instant T0 = Instant.parse("2026-08-11T05:00:00Z");
-    private static final Instant WINDOW_A_END = T0.plusSeconds(300);
-    private static final Instant WINDOW_B_END = T0.plusSeconds(600);
 
     private static final String AGGREGATES = "job-test-aggregates";
     private static final String ALERTS = "job-test-alerts";
@@ -59,28 +50,21 @@ class TelemetryPipelineJobTest {
     }
 
     /**
-     * The payloads, in the order the source emits them. Order matters: it is what advances the
-     * watermark, and therefore what makes the final record late.
+     * The small STN-RAIN values stay under every window's lowest alerting band, so they only
+     * exercise the per-reading aggregate side output. STN-RAIN-HEAVY's single 250mm reading
+     * crosses the window=24h EXTREME band (>=204.5mm, see RainfallAlertPolicy) on its own.
      */
     private static List<byte[]> inputPayloads() {
         List<byte[]> payloads = new ArrayList<>();
-        // Window A = [05:00, 05:05). Rainfall sums to 22 mm, which clears the 15 mm WARNING band.
-        payloads.add(TestEvents.readingBytes("STN-RAIN", SensorType.RAINFALL, 10.0d, T0.plusSeconds(60)));
-        payloads.add(TestEvents.readingBytes("STN-RAIN", SensorType.RAINFALL, 12.0d, T0.plusSeconds(120)));
-        // Window A for a river gauge. Max is 5 m, below the 8 m WARNING band, so it stays quiet.
-        payloads.add(TestEvents.readingBytes("STN-RIVER", SensorType.RIVER_LEVEL, 3.0d, T0.plusSeconds(60)));
-        payloads.add(TestEvents.readingBytes("STN-RIVER", SensorType.RIVER_LEVEL, 5.0d, T0.plusSeconds(120)));
+        payloads.add(TestEvents.readingBytes("STN-RAIN", SensorType.RAINFALL, 3.0d, T0.plusSeconds(60)));
+        payloads.add(TestEvents.readingBytes("STN-RAIN", SensorType.RAINFALL, 4.0d, T0.plusSeconds(120)));
         // Two payloads the pipeline must refuse without failing.
         payloads.add(TestEvents.bytes("{\"stationId\": \"STN-RAIN\", this is not json"));
         payloads.add(TestEvents.bytes(
                 "{\"sensorType\":\"RAINFALL\",\"value\":9.0,\"eventTime\":\"2026-08-11T05:01:00Z\"}"));
-        // Window B = [05:05, 05:10). Rainfall sums to 35 mm, which clears the 30 mm SEVERE band.
-        // These also push the watermark past the end of window A and fire it.
-        payloads.add(TestEvents.readingBytes("STN-RAIN", SensorType.RAINFALL, 20.0d, T0.plusSeconds(360)));
-        payloads.add(TestEvents.readingBytes("STN-RAIN", SensorType.RAINFALL, 15.0d, T0.plusSeconds(420)));
-        // Late: belongs to window A, which has already fired. Must be dropped, and its 100 mm
-        // must not appear in any aggregate.
-        payloads.add(TestEvents.readingBytes("STN-RAIN", SensorType.RAINFALL, 100.0d, T0.plusSeconds(180)));
+        payloads.add(TestEvents.readingBytes("STN-RAIN", SensorType.RAINFALL, 5.0d, T0.plusSeconds(360)));
+        payloads.add(TestEvents.readingBytes("STN-RAIN", SensorType.RAINFALL, 2.0d, T0.plusSeconds(420)));
+        payloads.add(TestEvents.readingBytes("STN-RAIN-HEAVY", SensorType.RAINFALL, 250.0d, T0.plusSeconds(500)));
         return payloads;
     }
 
@@ -117,60 +101,51 @@ class TelemetryPipelineJobTest {
     }
 
     @Test
-    void producesTheExpectedAggregatesAlertsAndDeadLettersAcrossTwoWindows() throws Exception {
+    void producesTheExpectedAggregatesAlertsAndDeadLetters() throws Exception {
         runPipeline();
 
         List<StationWindowAggregate> aggregates = aggregates();
         List<Alert> alerts = alerts();
         List<DeadLetterRecord> deadLetters = CollectingSink.collected(DEAD_LETTERS);
 
-        // Three windows fired: two stations in window A, one station in window B.
-        assertThat(aggregates).hasSize(3);
+        // One aggregate per reading (no windowing): 4 for STN-RAIN, 1 for STN-RAIN-HEAVY.
+        assertThat(aggregates).hasSize(5);
 
-        StationWindowAggregate rainWindowA = aggregates.get(0);
-        assertThat(rainWindowA.getStationId()).isEqualTo("STN-RAIN");
-        assertThat(rainWindowA.getWindowStart()).isEqualTo(T0);
-        assertThat(rainWindowA.getWindowEnd()).isEqualTo(WINDOW_A_END);
-        assertThat(rainWindowA.getReadingCount()).isEqualTo(2L);
-        assertThat(rainWindowA.getSum()).isEqualTo(22.0d);
-        assertThat(rainWindowA.getMin()).isEqualTo(10.0d);
-        assertThat(rainWindowA.getMax()).isEqualTo(12.0d);
-        assertThat(rainWindowA.getAvg()).isEqualTo(11.0d);
-        // Rainfall aggregates by sum.
-        assertThat(rainWindowA.getAggregatedValue()).isEqualTo(22.0d);
-        assertThat(rainWindowA.getStationName()).isEqualTo("STN-RAIN Gauge");
-        assertThat(rainWindowA.getComputedAt()).isNotNull();
+        assertThat(aggregates)
+                .filteredOn(aggregate -> "STN-RAIN".equals(aggregate.getStationId()))
+                .hasSize(4)
+                .allSatisfy(aggregate -> {
+                    assertThat(aggregate.getSensorType()).isEqualTo(SensorType.RAINFALL);
+                    assertThat(aggregate.getReadingCount()).isEqualTo(1L);
+                    // A rainfall aggregate is that single reading's own value, not a window sum.
+                    assertThat(aggregate.getSum()).isEqualTo(aggregate.getAggregatedValue());
+                    assertThat(aggregate.getWindowEnd()).isEqualTo(aggregate.getWindowStart().plusSeconds(3600));
+                    assertThat(aggregate.getStationName()).isEqualTo("STN-RAIN Gauge");
+                })
+                .extracting(StationWindowAggregate::getAggregatedValue)
+                .containsExactlyInAnyOrder(3.0d, 4.0d, 5.0d, 2.0d);
 
-        StationWindowAggregate riverWindowA = aggregates.get(1);
-        assertThat(riverWindowA.getStationId()).isEqualTo("STN-RIVER");
-        assertThat(riverWindowA.getWindowEnd()).isEqualTo(WINDOW_A_END);
-        assertThat(riverWindowA.getSum()).isEqualTo(8.0d);
-        // River level aggregates by max, not sum: 5 m, not 8 m.
-        assertThat(riverWindowA.getAggregatedValue()).isEqualTo(5.0d);
+        StationWindowAggregate rainHeavy = aggregates.stream()
+                .filter(aggregate -> "STN-RAIN-HEAVY".equals(aggregate.getStationId()))
+                .findFirst().orElseThrow();
+        assertThat(rainHeavy.getReadingCount()).isEqualTo(1L);
+        assertThat(rainHeavy.getAggregatedValue()).isEqualTo(250.0d);
+        assertThat(rainHeavy.getWindowEnd()).isEqualTo(T0.plusSeconds(500));
 
-        StationWindowAggregate rainWindowB = aggregates.get(2);
-        assertThat(rainWindowB.getStationId()).isEqualTo("STN-RAIN");
-        assertThat(rainWindowB.getWindowStart()).isEqualTo(WINDOW_A_END);
-        assertThat(rainWindowB.getWindowEnd()).isEqualTo(WINDOW_B_END);
-        assertThat(rainWindowB.getReadingCount()).isEqualTo(2L);
-        assertThat(rainWindowB.getAggregatedValue()).isEqualTo(35.0d);
-
-        // Two alerts: the calm river window raises nothing.
-        assertThat(alerts).hasSize(2);
-        assertThat(alerts.get(0).getStationId()).isEqualTo("STN-RAIN");
-        assertThat(alerts.get(0).getSeverity()).isEqualTo(Severity.WARNING);
-        assertThat(alerts.get(0).getObservedValue()).isEqualTo(22.0d);
-        assertThat(alerts.get(0).getThresholdValue()).isEqualTo(PipelineConfig.DEFAULT_RAINFALL_WARNING);
-        assertThat(alerts.get(0).getMetric()).isEqualTo(PipelineConfig.METRIC_RAINFALL);
-        assertThat(alerts.get(0).getWindowEnd()).isEqualTo(WINDOW_A_END);
-
-        assertThat(alerts.get(1).getSeverity()).isEqualTo(Severity.SEVERE);
-        assertThat(alerts.get(1).getObservedValue()).isEqualTo(35.0d);
-        assertThat(alerts.get(1).getWindowStart()).isEqualTo(WINDOW_A_END);
-
-        assertThat(alerts).extracting(Alert::getAlertId).doesNotHaveDuplicates();
-        assertThat(alerts).extracting(Alert::getMessage).allSatisfy(message ->
-                assertThat(message).contains("STN-RAIN"));
+        // One alert: STN-RAIN-HEAVY's 250mm reading crosses the window=24h EXTREME band on its
+        // own. The small STN-RAIN readings raise nothing.
+        assertThat(alerts).hasSize(1);
+        Alert heavyAlert = alerts.get(0);
+        assertThat(heavyAlert.getStationId()).isEqualTo("STN-RAIN-HEAVY");
+        assertThat(heavyAlert.getSensorType()).isEqualTo(SensorType.RAINFALL);
+        assertThat(heavyAlert.getSeverity()).isEqualTo(Severity.EXTREME);
+        assertThat(heavyAlert.getObservedValue()).isEqualTo(250.0d);
+        // The window=24h extremely_heavy_rainfall lower bound -- see RainfallAlertPolicy.
+        assertThat(heavyAlert.getThresholdValue()).isEqualTo(204.5d);
+        assertThat(heavyAlert.getMetric()).isEqualTo("RAINFALL_ACCUMULATION_24H");
+        assertThat(heavyAlert.getWindowStart()).isEqualTo(T0.plusSeconds(500).minusSeconds(24 * 3600));
+        assertThat(heavyAlert.getWindowEnd()).isEqualTo(T0.plusSeconds(500));
+        assertThat(heavyAlert.getMessage()).contains("STN-RAIN-HEAVY");
 
         // Both refused payloads reached the dead-letter branch instead of failing the job.
         assertThat(deadLetters).hasSize(2);
@@ -182,23 +157,6 @@ class TelemetryPipelineJobTest {
     }
 
     @Test
-    void dropsARecordThatArrivesAfterItsWindowHasFired() throws Exception {
-        runPipeline();
-
-        // The late reading is 100 mm. Had it been admitted, window A would have summed to 122 mm
-        // and raised EXTREME rather than WARNING.
-        assertThat(aggregates())
-                .filteredOn(aggregate -> "STN-RAIN".equals(aggregate.getStationId())
-                        && T0.equals(aggregate.getWindowStart()))
-                .singleElement()
-                .satisfies(aggregate -> {
-                    assertThat(aggregate.getReadingCount()).isEqualTo(2L);
-                    assertThat(aggregate.getAggregatedValue()).isEqualTo(22.0d);
-                });
-        assertThat(alerts()).extracting(Alert::getSeverity).doesNotContain(Severity.EXTREME);
-    }
-
-    @Test
     void repeatingTheRunProducesIdenticalAlertIds() throws Exception {
         runPipeline();
         List<String> first = alerts().stream().map(Alert::getAlertId).toList();
@@ -207,7 +165,7 @@ class TelemetryPipelineJobTest {
         runPipeline();
         List<String> second = alerts().stream().map(Alert::getAlertId).toList();
 
-        // This is what makes at-least-once Kafka sinks safe: a replayed window, whether from a
+        // This is what makes at-least-once Kafka sinks safe: a replayed buffer, whether from a
         // checkpoint restore or a resubmission, yields the same id for the alert store to upsert.
         assertThat(second).isEqualTo(first);
     }
@@ -226,41 +184,8 @@ class TelemetryPipelineJobTest {
         assertThat(env.getCheckpointConfig().getCheckpointTimeout()).isEqualTo(120_000L);
         assertThat(env.getCheckpointConfig().getTolerableCheckpointFailureNumber()).isEqualTo(3);
         // Retained on cancellation, so a planned stop can be resumed rather than restarting with
-        // empty window state.
+        // empty buffer state.
         assertThat(env.getCheckpointConfig().getExternalizedCheckpointRetention())
                 .isEqualTo(org.apache.flink.configuration.ExternalizedCheckpointRetention.RETAIN_ON_CANCELLATION);
-    }
-
-    @Test
-    void honoursAConfiguredWindowSize() throws Exception {
-        PipelineConfig tenMinuteWindows = PipelineConfig.from(
-                ParameterTool.fromMap(Map.of(PipelineConfig.PARAM_WINDOW_SIZE_MINUTES, "10")),
-                name -> null);
-
-        StreamExecutionEnvironment env = StreamExecutionEnvironment.getExecutionEnvironment();
-        env.setParallelism(1);
-        DataStream<byte[]> source = env.fromData(
-                inputPayloads(), PrimitiveArrayTypeInfo.BYTE_PRIMITIVE_ARRAY_TYPE_INFO);
-        TelemetryPipelineJob.PipelineStreams streams =
-                TelemetryPipelineJob.buildTopology(source, tenMinuteWindows, PerRecordWatermarks.strategy());
-        streams.aggregates().sinkTo(new CollectingSink<>(AGGREGATES));
-        streams.alerts().sinkTo(new CollectingSink<>(ALERTS));
-        streams.deadLetters().sinkTo(new CollectingSink<>(DEAD_LETTERS));
-        env.execute("telemetry-pipeline-wide-window-test");
-
-        // One ten-minute window now covers everything, so the two rainfall windows collapse into
-        // one and the late record is no longer late.
-        assertThat(aggregates()).allSatisfy(aggregate -> {
-            assertThat(aggregate.getWindowStart()).isEqualTo(T0);
-            assertThat(aggregate.getWindowEnd()).isEqualTo(WINDOW_B_END);
-        });
-        assertThat(aggregates())
-                .filteredOn(aggregate -> "STN-RAIN".equals(aggregate.getStationId()))
-                .singleElement()
-                .satisfies(aggregate -> {
-                    assertThat(aggregate.getReadingCount()).isEqualTo(5L);
-                    assertThat(aggregate.getAggregatedValue()).isEqualTo(157.0d);
-                });
-        assertThat(alerts()).extracting(Alert::getSeverity).containsExactly(Severity.EXTREME);
     }
 }

@@ -1,6 +1,5 @@
-# Test profile: the schedule is off by default so a test never races a background scrape round,
-# and the storm tuning is pinned so an assertion about alert bands cannot be broken by retuning
-# the production defaults.
+# Test profile: the real scraper is off so a Spring context boot never fires a live call
+# against the actual desweather.ap.gov.in API.
 spring:
   kafka:
     bootstrap-servers: ${spring.embedded.kafka.brokers:localhost:9092}
@@ -10,15 +9,8 @@ stream:
     partitions: 3
     replication-factor: 1
   ingest:
-    scrape-interval-ms: 3600000
-    source: STREAM_SIMULATOR
+    desweather-scrape-enabled: false
     max-batch-size: 100
-    simulator:
-      enabled: false
-      seed: 42
-      storm-fraction: 0.12
-      storm-min-cycles: 5
-      storm-max-cycles: 10
 
 logging:
   level:
