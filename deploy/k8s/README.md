@@ -237,16 +237,22 @@ kubectl -n stream exec deploy/flink-jobmanager -- \
 
 ### Alerts are landing in PostgreSQL
 
-Force a burst rather than waiting out a 5-minute window plus 30s of watermark lag:
+The scraper polls the weather API every 5 minutes, but the API only updates about once an
+hour, so post a test reading instead of waiting:
 
 ```bash
-curl -XPOST "http://$(minikube ip):30091/api/v1/telemetry/simulate/burst?stormStations=10"
+curl -X POST "http://$(minikube ip):30091/api/v1/telemetry/readings" \
+  -H 'Content-Type: application/json' \
+  -d '{"stationId":"TEST-STATION-01","sensorType":"RAINFALL","value":250.0}'
 ```
 
-Then, one window plus the watermark lag later:
+A few seconds later there should be an EXTREME alert for the 24 hour window
+(250 mm is above the 204.5 mm limit):
 
 ```bash
-curl -s "http://$(minikube ip):30092/api/v1/alerts?severity=WARNING&size=20" | jq .
+curl -s "http://$(minikube ip):30092/api/v1/alerts?stationId=TEST-STATION-01" | jq .
+
+kubectl -n stream logs deploy/ingest-service | grep Scraped   # scraper activity against the API
 
 kubectl -n stream exec -it postgres-0 -- \
   psql -U stream -d stream -c \
@@ -257,7 +263,7 @@ kubectl -n stream exec -it postgres-0 -- \
 ```
 
 Nothing in `alerts` but rows in `station_window_aggregates` means the pipeline is
-running and no threshold was breached - raise `stormStations`.
+running and no limit was crossed. Post a larger test value to check the alert path.
 
 ### Metrics are exposed (phase 3 depends on this)
 

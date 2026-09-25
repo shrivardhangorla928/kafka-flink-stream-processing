@@ -1,51 +1,57 @@
 # Kafka + Flink Stream Processing
 
-Event-driven **scrape → aggregate → alert** pipeline built on Apache Kafka and Apache Flink,
-containerised and deployed on Kubernetes, with a Jenkins/SonarQube delivery pipeline and
-Prometheus/Grafana observability.
+A rainfall alerting pipeline built with Apache Kafka and Apache Flink. It reads rainfall data from
+the Andhra Pradesh government weather API, keeps a rolling 24 hour history for every station, and
+raises an alert when the rainfall crosses set limits. The services run on Kubernetes and are built
+and deployed with Jenkins and SonarQube.
 
-Dissertation project for BITS Pilani WILP M.Tech (Cloud Computing) —
+Dissertation project for BITS Pilani WILP M.Tech (Cloud Computing),
 *DevOps Automation with Scalable Services, Real-Time Monitoring, and Stream Processing*
 (Course CCZG628T, BITS ID 2024MT03552).
 
 ---
 
-## Why this shape
+## How it works
 
-The organisation's existing hydro-meteorological workflow runs as three coupled batch steps:
-a scraper collects station readings, a job aggregates them, and a third step decides which
-alerts to raise. Latency is bounded by how often the batch runs, a failure anywhere restarts
-the whole chain, and there is no way to scale one stage independently of the others.
+![Pipeline diagram](docs/pipeline-diagram.png)
 
-This project re-expresses the same workflow as three **independently deployable, independently
-scalable stages joined by Kafka topics**, with the aggregation and threshold logic running as
-an Apache Flink event-time streaming job:
+1. **ingest-service** polls `http://desweather.ap.gov.in/webservice/rest/json` every 5 minutes.
+   One call returns about 2,200 stations.
+2. The API gives a running total for the day, not the rain since the last reading. The service keeps
+   the last total and update time for each station and works out the new rainfall:
+   - update time not changed: the station is skipped
+   - total went up: the difference is the new rainfall
+   - total went down: the daily counter was reset, so the new total is used as it is
+3. Only stations with new data are published to Kafka on `telemetry.raw.v1`, keyed by station id.
+4. **flink-pipeline** reads the topic, groups readings by station and keeps the last 24 hours of each
+   station in Flink state. On every reading it works out the 1, 2, 3, 6, 12 and 24 hour totals and
+   checks them against the rainfall categories. If a limit is crossed it sends one alert (the
+   highest one) to `alerts.generated.v1`. It also writes a one hour summary for every reading to
+   `telemetry.aggregated.v1`.
+5. **alert-service** reads both output topics, saves them in PostgreSQL and serves a REST API to
+   list, filter and acknowledge alerts.
 
-```
-                 ┌──────────────────┐
-   stations ────►│  ingest-service  │  Spring Boot, scrapes/receives readings
-                 └────────┬─────────┘
-                          │  telemetry.raw.v1        (3 partitions, key = stationId)
-                          ▼
-                 ┌──────────────────────────────────────────────┐
-                 │              flink-pipeline                  │
-                 │  event-time watermarks (30 s out-of-order)   │
-                 │  keyBy(stationId)                            │
-                 │  5-minute tumbling window → aggregate        │
-                 │  threshold evaluation → alert                │
-                 └───┬──────────────────────┬───────────────┬───┘
-   telemetry.aggregated.v1        alerts.generated.v1    telemetry.dlq.v1
-                     │                      │
-                     └──────────┬───────────┘
-                                ▼
-                       ┌──────────────────┐
-                       │  alert-service   │  Spring Boot + PostgreSQL, query API
-                       └──────────────────┘
-```
+The API is polled on a schedule, but after that every reading is handled as a separate event, so
+an alert comes out within seconds of the reading reaching Kafka. Flink checkpoints the station
+histories and its Kafka position every 30 seconds, so a restart continues from where it stopped.
 
-Each stage exposes Prometheus metrics, so the pipeline's end-to-end latency
-(`windowEnd → alert persisted`) is measurable rather than asserted — that number is the
-baseline the evaluation chapter compares against the current batch workflow.
+---
+
+## Rainfall rules
+
+The totals are compared with IMD style rainfall categories. A longer window needs more rain to reach
+the same category:
+
+| Category | 1 hour total | 24 hour total |
+|---|---|---|
+| Heavy rainfall | 16.1 mm and above | 64.6 mm and above |
+| Very heavy rainfall | 30.1 mm and above | 115.7 mm and above |
+| Extremely heavy rainfall | 50.0 mm and above | 204.5 mm and above |
+
+Each window and category has an alert level. Short windows are mostly ignored, because an hour of
+heavy rain alone is not a flood risk. The 6, 12 and 24 hour windows give caution, warning or alert,
+stored as `WARNING`, `SEVERE` and `EXTREME`. The full tables for all six windows are in
+[`RainfallAlertPolicy.java`](flink-pipeline/src/main/java/com/stream/processing/flink/rainfall/RainfallAlertPolicy.java).
 
 ---
 
@@ -53,50 +59,27 @@ baseline the evaluation chapter compares against the current batch workflow.
 
 | Module | What it does | Tests |
 |---|---|---|
-| `common-model` | The event contract: `SensorReading`, `StationWindowAggregate`, `Alert`, topic names, shared JSON codec. Framework-free, depended on by all three services. | 31 |
-| `ingest-service` | Spring Boot. Simulates/receives station telemetry and publishes `SensorReading` to `telemetry.raw.v1`. REST API for pushing readings and triggering bursts. | 83 |
-| `flink-pipeline` | Apache Flink job. Event-time windowed aggregation per station, then threshold evaluation, emitting aggregates and alerts. | 100 |
-| `alert-service` | Spring Boot + PostgreSQL. Consumes alerts idempotently, persists them, serves the filterable query API. | 109 |
+| `common-model` | Shared event classes (`SensorReading`, `StationWindowAggregate`, `Alert`), topic names and JSON codec. | 31 |
+| `ingest-service` | Spring Boot. Polls the weather API, works out new rainfall per station and publishes to Kafka. Also has a REST endpoint to post a reading by hand. | 38 |
+| `flink-pipeline` | Flink job. Rolling 24 hour history per station, checks the six windows and emits alerts and summaries. | 88 |
+| `alert-service` | Spring Boot and PostgreSQL. Stores alerts and summaries and serves the query API. | 109 |
 
-### Java version split
+`flink-pipeline` and `common-model` compile to Java 17, because Flink 1.20 has no Java 21 image.
+The two Spring Boot services use Java 21.
 
-`flink-pipeline` and `common-model` compile to **Java 17** bytecode; `ingest-service` and
-`alert-service` compile to **Java 21**. This is not an oversight: Apache Flink publishes no
-`java21` container image for the 1.20 LTS line, so anything loaded inside a TaskManager has to be
-Java 17 or it fails with `UnsupportedClassVersionError`. A Java 21 module consumes a 17-targeted
-jar without issue, so the constraint costs nothing.
+### Kafka topics
 
-### The event contract
-
-| Topic | Payload | Key | Partitions |
+| Topic | Written by | Read by | Contents |
 |---|---|---|---|
-| `telemetry.raw.v1` | `SensorReading` | `stationId` | 3 |
-| `telemetry.aggregated.v1` | `StationWindowAggregate` | `stationId` | 3 |
-| `alerts.generated.v1` | `Alert` | `stationId` | 3 |
-| `telemetry.dlq.v1` | rejected payloads | `stationId` | 3 |
+| `telemetry.raw.v1` | ingest-service | flink-pipeline | New rainfall readings |
+| `telemetry.dlq.v1` | flink-pipeline | kept for checking | Readings that failed validation |
+| `telemetry.aggregated.v1` | flink-pipeline | alert-service | One summary per reading |
+| `alerts.generated.v1` | flink-pipeline | alert-service | Alerts, only when a limit is crossed |
 
-Alert ids are **deterministic** — a UUIDv3 over (station, sensor type, window bounds, severity).
-The Flink sink is at-least-once, so a job restored from a checkpoint re-emits windows it had
-already emitted; because the id is derived rather than random, the alert store's upsert collapses
-the duplicate instead of raising the same flood warning twice.
+All topics have 3 partitions, matching the Flink job's parallelism.
 
-### Why these numbers
-
-| Setting | Value | Reasoning |
-|---|---|---|
-| Scrape interval | 60 s | 50 stations × 1/min ≈ 0.83 msg/s at rest; the load-test profile scales this up. |
-| Window | 5 min tumbling, event time | 5 readings per station per window at the default scrape interval — enough to make a sum meaningful, short enough to observe alerts during a demo. |
-| Watermark lag | 30 s bounded out-of-orderness | A window therefore fires at `windowEnd + 30 s`; that 30 s is the floor on alerting latency. |
-| Kafka partitions | 3 | Sets the ceiling on consumer parallelism; matched by the Flink job's parallelism (3), the TaskManager's slot count (3) and the alert service's listener concurrency (3). |
-| Checkpoint interval | 30 s, exactly-once | State is small (a few aggregates per station), so checkpoints are cheap relative to the 5-minute window. |
-
-Alerting thresholds (highest breached band wins):
-
-| Sensor | Aggregate | WARNING | SEVERE | EXTREME |
-|---|---|---|---|---|
-| `RAINFALL` | window sum, mm | 15 | 30 | 50 |
-| `RESERVOIR_LEVEL` | window max, % of FRL | 85 | 95 | 100 |
-| `RIVER_LEVEL` | window max, m | 8 | 10 | 12 |
+Alert ids are built from the station, time window and severity. If Flink sends the same alert again
+after a restart, alert-service updates the existing row instead of adding a new one.
 
 ---
 
@@ -105,11 +88,7 @@ Alerting thresholds (highest breached band wins):
 Prerequisites: Docker with Compose, JDK 21, Maven 3.9+.
 
 ```bash
-# build everything and run the full stack
 docker compose -f deploy/docker/docker-compose.yml up -d --build
-
-# watch the Flink job come up
-open http://localhost:8081
 ```
 
 | Endpoint | URL |
@@ -120,30 +99,56 @@ open http://localhost:8081
 | Kafka (from the host) | `localhost:29092` |
 | PostgreSQL | `localhost:5433`, db/user/password `stream` |
 
-Host ports are shifted off the defaults because this workstation already runs a PostgreSQL on
-5432 and a Jenkins container on 8099.
+The scraper starts polling the API on its own. To see an alert without waiting for the API to
+update, post a test reading:
 
 ```bash
-# force a burst of storm readings so alerts appear without waiting for a window
-curl -XPOST 'http://localhost:8091/api/v1/telemetry/simulate/burst?stormStations=10'
+curl -X POST http://localhost:8091/api/v1/telemetry/readings \
+  -H 'Content-Type: application/json' \
+  -d '{"stationId":"TEST-STATION-01","sensorType":"RAINFALL","value":250.0}'
 
-# ...then, one window plus the watermark lag later
-curl 'http://localhost:8092/api/v1/alerts?severity=WARNING&size=20'
+# a few seconds later: an EXTREME alert for the 24 hour window (250 mm is above 204.5 mm)
+curl 'http://localhost:8092/api/v1/alerts?stationId=TEST-STATION-01'
+curl 'http://localhost:8092/api/v1/alerts/summary'
 ```
 
-### Building without Docker
+For Kubernetes (minikube) see [`deploy/k8s/README.md`](deploy/k8s/README.md), and for the Jenkins
+and SonarQube setup see [`deploy/cicd/README.md`](deploy/cicd/README.md).
+
+### Configuration
+
+| Property | Default | Meaning |
+|---|---|---|
+| `stream.ingest.desweather-url` | `http://desweather.ap.gov.in/webservice/rest/json` | Weather API address |
+| `stream.ingest.desweather-poll-interval-ms` | `300000` | How often the API is polled |
+| `stream.ingest.desweather-scrape-enabled` | `true` | Turns the scraper off, for example in tests |
+
+### Build and test
 
 ```bash
-mvn -B clean verify          # compiles, tests, and writes JaCoCo coverage reports
+mvn -B clean verify   # compiles, runs all 266 tests and writes JaCoCo coverage reports
 ```
 
 ---
 
-## Project phases
+## Known issues
+
+- On the first poll the scraper has no earlier total for a station, so it sends the whole day's
+  total as one reading. This can make the 6 and 12 hour totals look higher than they were.
+- ingest-service runs as two pods on Kubernetes and each one polls the API with its own copy of the
+  last totals. If one pod restarts on its own it can send full daily totals again. The plan is to
+  run a single scraper and keep the last totals in PostgreSQL.
+- The smoke test stage in the `Jenkinsfile` still calls the old `/simulate/burst` endpoint, which was
+  removed. It has to be changed to post a test reading before the next pipeline run.
+
+---
+
+## Project status
 
 | Phase | Status |
 |---|---|
-| 1. Streaming application: Kafka + Flink, containerised, on Kubernetes | in progress |
-| 2. CI/CD: Jenkins pipeline-as-code with SonarQube quality gates | not started |
-| 3. Observability: Prometheus + Grafana, HPA against custom metrics | not started |
-| 4. Evaluation: load testing, autoscaling behaviour, latency vs. the batch baseline | not started |
+| Kafka and Flink rainfall pipeline on the real weather API | Done, tested on a local minikube cluster |
+| Kubernetes deployment | Done, tested on a local minikube cluster |
+| Jenkins pipeline with SonarQube quality gate | Set up, to be run again on the rainfall code |
+| Prometheus, Grafana and HPA | Not started |
+| Load testing and evaluation | Not started |
