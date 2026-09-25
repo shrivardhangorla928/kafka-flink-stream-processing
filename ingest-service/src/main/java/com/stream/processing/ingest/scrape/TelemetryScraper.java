@@ -51,6 +51,10 @@ public class TelemetryScraper {
 
         List<SensorReading> readings = new ArrayList<>();
         for (DesweatherReading r : stations) {
+            // the API sends -1 when a station has no reading
+            if (r.getRain() < 0) {
+                continue;
+            }
             Instant eventTime = parseLdate(r.getLdate());
             if (eventTime == null) {
                 continue;

@@ -121,6 +121,18 @@ class TelemetryScraperTest {
     }
 
     @Test
+    @DisplayName("a station reporting -1 (no reading) is skipped without touching rain state")
+    void missingReadingIsSkipped() {
+        DesweatherReading reading = station(1004L, "25/09/2026 06:00:00 AM", -1.0d);
+        when(desweatherClient.fetch()).thenReturn(List.of(reading));
+
+        scraper.scheduledScrape();
+
+        assertThat(capturePublishedBatch()).isEmpty();
+        verifyNoInteractions(stationRainState);
+    }
+
+    @Test
     @DisplayName("a station with an unparseable ldate is skipped without consulting rain state")
     void unparseableLdateIsSkipped() {
         DesweatherReading reading = station(1003L, "not-a-date", 4.5d);
