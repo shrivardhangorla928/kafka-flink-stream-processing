@@ -60,7 +60,7 @@ stored as `WARNING`, `SEVERE` and `EXTREME`. The full tables for all six windows
 | Module | What it does | Tests |
 |---|---|---|
 | `common-model` | Shared event classes (`SensorReading`, `StationWindowAggregate`, `Alert`), topic names and JSON codec. | 31 |
-| `ingest-service` | Spring Boot. Polls the weather API, works out new rainfall per station and publishes to Kafka. Also has a REST endpoint to post a reading by hand. | 38 |
+| `ingest-service` | Spring Boot. Polls the weather API, works out new rainfall per station and publishes to Kafka. Also has a REST endpoint to post a reading by hand. | 39 |
 | `flink-pipeline` | Flink job. Rolling 24 hour history per station, checks the six windows and emits alerts and summaries. | 88 |
 | `alert-service` | Spring Boot and PostgreSQL. Stores alerts and summaries and serves the query API. | 109 |
 
@@ -126,7 +126,7 @@ and SonarQube setup see [`deploy/cicd/README.md`](deploy/cicd/README.md).
 ### Build and test
 
 ```bash
-mvn -B clean verify   # compiles, runs all 266 tests and writes JaCoCo coverage reports
+mvn -B clean verify   # compiles, runs all 267 tests and writes JaCoCo coverage reports
 ```
 
 ---
@@ -138,8 +138,6 @@ mvn -B clean verify   # compiles, runs all 266 tests and writes JaCoCo coverage 
 - ingest-service runs as two pods on Kubernetes and each one polls the API with its own copy of the
   last totals. If one pod restarts on its own it can send full daily totals again. The plan is to
   run a single scraper and keep the last totals in PostgreSQL.
-- The smoke test stage in the `Jenkinsfile` still calls the old `/simulate/burst` endpoint, which was
-  removed. It has to be changed to post a test reading before the next pipeline run.
 
 ---
 

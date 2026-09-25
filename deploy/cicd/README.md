@@ -126,11 +126,7 @@ The gate is created *after* the first analysis on purpose — see
 | Quality Gate | `waitForQualityGate()` — parks the build until SonarQube's webhook delivers the verdict | the gate is not `OK` (unless `SKIP_QUALITY_GATE`) |
 | Container Images | Three `docker build` targets against **minikube's** daemon, tagged `1.0.0-b<N>` | any image fails to build |
 | Deploy to Kubernetes | `kustomize edit set image` to this build's tag, then `kubectl apply -k` and `rollout status` on all six workloads | any rollout does not complete in 300s |
-| Smoke Test | Health of both services, four topics present, Flink job `RUNNING`, then a test reading and a wait for real rows in PostgreSQL | no new aggregate appears |
-
-**Note:** the smoke test in the `Jenkinsfile` still calls the old `/simulate/burst` endpoint,
-which was removed when the project moved to the real weather API. It has to be changed to post a
-test reading to `/api/v1/telemetry/readings` before the next pipeline run.
+| Smoke Test | Health of both services, four topics present, Flink job `RUNNING`, then posts a 250 mm test reading and checks that an EXTREME alert and a new aggregate appear | no alert within 120s, or no new aggregate |
 
 `post { always }` collects pod descriptions, events and 400 lines of logs from each
 workload into an archived `diagnostics/` artefact — the only record of a failed
