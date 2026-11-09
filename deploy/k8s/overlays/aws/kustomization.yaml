@@ -1,0 +1,36 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+# Small demo cluster on one or two cloud VMs. Built on the local overlay and cut
+# down further: one pod of each service, Flink parallelism 1, smaller JVM heaps.
+# Not for load tests. The arithmetic is in deploy/k8s/README.md.
+namespace: stream
+
+resources:
+  - ../local
+
+replicas:
+  - name: alert-service
+    count: 1
+  - name: ingest-service
+    count: 1
+  - name: flink-taskmanager
+    count: 1
+
+configMapGenerator:
+  - name: flink-jobmanager-config
+    behavior: replace
+    files:
+      - config.yaml=flink/jobmanager-config.yaml
+  - name: flink-taskmanager-config
+    behavior: replace
+    files:
+      - config.yaml=flink/taskmanager-config.yaml
+
+patches:
+  - path: patches/kafka.yaml
+  - path: patches/postgres.yaml
+  - path: patches/flink.yaml
+  - path: patches/services.yaml
+  - path: patches/monitoring.yaml
+  - path: patches/hpa.yaml

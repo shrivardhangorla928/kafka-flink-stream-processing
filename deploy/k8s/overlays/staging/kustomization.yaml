@@ -29,4 +29,5 @@ patches:
   - path: patches/flink-state-pvc.yaml
   - path: patches/ingest-service.yaml
   - path: patches/alert-service.yaml
+  - path: patches/hpa-alert-service.yaml
   - path: patches/topic-init-job.yaml

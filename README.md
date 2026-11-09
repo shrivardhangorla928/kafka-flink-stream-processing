@@ -147,6 +147,7 @@ mvn -B clean verify   # compiles, runs all 267 tests and writes JaCoCo coverage 
 |---|---|
 | Kafka and Flink rainfall pipeline on the real weather API | Done, tested on a local minikube cluster |
 | Kubernetes deployment | Done, tested on a local minikube cluster |
-| Jenkins pipeline with SonarQube quality gate | Set up, to be run again on the rainfall code |
-| Prometheus, Grafana and HPA | Not started |
-| Load testing and evaluation | Not started |
+| Jenkins pipeline with SonarQube quality gate | Done. Build 9 on `develop` passed all stages including the quality gate (local Jenkins, deploy to local minikube) |
+| Prometheus and Grafana | Done, tested on a local minikube cluster (3 dashboards) |
+| HPA autoscaling | Done for ingest-service and alert-service (CPU based), tested on a local minikube cluster |
+| Load testing and evaluation | Done once on local minikube: 881 requests per second for 150 s, no errors, HPA went from 2 to 3 pods |

@@ -20,11 +20,14 @@ deploy/k8s/
                                  checkpoint PVC, config/{jobmanager,taskmanager}-config.yaml
     ingest-service/              Deployment, Service, ConfigMap
     alert-service/               Deployment, Service, ConfigMap
+    monitoring/                  Prometheus (Deployment, PVC, RBAC, scrape config),
+                                 Grafana (Deployment, provisioning, 3 dashboards)
   overlays/
     local/                       single-node minikube; 1 broker, RF 1, 2 alert replicas
       flink/                     smaller Flink memory sizes
       patches/
       flink-ui-nodeport.yaml
+      monitoring-nodeport.yaml   NodePorts for Grafana and Prometheus
     staging/                     multi-node; base shape, larger resources, pull Always
       patches/
       pdb.yaml                   disruption budgets for the stateless tiers
@@ -65,15 +68,16 @@ working:
 * **`--nodes=1`.** A second node would buy nothing here and would break one thing:
   the Flink checkpoint PVC is `ReadWriteMany`, which minikube's hostpath provisioner
   only really satisfies while every pod is on the same node.
-* **`--cpus=6`.** Pod CPU *requests* total 1.85. Six leaves the workstation's other
+* **`--cpus=6`.** Pod CPU *requests* total 2.0 at peak. Six leaves the workstation's other
   ten cores to the IDE and Jenkins, and gives the JVMs room to burst during start-up.
-* **`--memory=10g`.** Pod memory *requests* total 5.00 GiB; the sum of *limits* is
-  9.00 GiB. Ten covers the worst case with room for the kubelet and kube-system.
+* **`--memory=10g`.** Pod memory *requests* total 5.375 GiB at peak; the sum of *limits* is
+  9.75 GiB. The limits are a ceiling that is never reached together: measured use of
+  the whole stack with monitoring is about 3.5 GiB. Ten leaves room for the kubelet and kube-system.
   `--memory=8g` also works in practice - the Kafka heap (`-Xmx512m`) and both Flink
   process sizes (768m / 1024m) are fixed rather than percentage-of-limit, so the real
   steady state is around 6.3 GiB - but a simultaneous burst on both Spring services
   could then push the node into eviction. 10 GiB is the number with no asterisk on it.
-* **`--addons=metrics-server`.** Not needed now; phase 3's HPA needs it and enabling
+* **`--addons=metrics-server`.** The HPA needs it and enabling
   it at cluster creation is one less thing to remember.
 
 ### 2. Build the three images into minikube's Docker daemon
@@ -161,7 +165,7 @@ kubectl -n stream delete job kafka-topic-init --ignore-not-found
 
 ## Reaching things
 
-The `local` overlay publishes three fixed NodePorts. The numbers echo the Compose
+The `local` overlay publishes five fixed NodePorts. The numbers echo the Compose
 host ports so there is one mental model for both stand-ups.
 
 ```bash
@@ -173,11 +177,16 @@ MINIKUBE_IP=$(minikube ip)
 | Ingest API | `http://$MINIKUBE_IP:30091` | `http://localhost:8091` |
 | Alert API | `http://$MINIKUBE_IP:30092` | `http://localhost:8092` |
 | Flink web UI | `http://$MINIKUBE_IP:30081` | `http://localhost:8081` |
+| Grafana | `http://$MINIKUBE_IP:30300` | none |
+| Prometheus | `http://$MINIKUBE_IP:30090` | none |
+
+Grafana login is `admin` / `change-me-grafana` (`base/monitoring/grafana/secret.yaml`).
+The three dashboards sit in the folder Stream Processing.
 
 `minikube service -n stream ingest-service --url` prints the same thing and opens a
 tunnel if the driver needs one.
 
-Anything without a NodePort - Kafka, PostgreSQL, the Prometheus endpoints - is
+Anything without a NodePort - Kafka, PostgreSQL, the metrics endpoints - is
 reached by port-forward:
 
 ```bash
@@ -265,7 +274,7 @@ kubectl -n stream exec -it postgres-0 -- \
 Nothing in `alerts` but rows in `station_window_aggregates` means the pipeline is
 running and no limit was crossed. Post a larger test value to check the alert path.
 
-### Metrics are exposed (phase 3 depends on this)
+### Metrics are exposed
 
 ```bash
 kubectl -n stream exec deploy/ingest-service -- curl -s localhost:8080/actuator/prometheus | head
@@ -279,13 +288,40 @@ Prometheus discovers them with no further configuration. The four Services also 
 `flink-taskmanager-metrics` is headless on purpose: a load-balanced ClusterIP would
 scrape a different one of the three TaskManagers each interval.
 
+## Monitoring
+
+Prometheus and Grafana live in `base/monitoring/` and deploy into the same `stream`
+namespace.
+
+* **Prometheus** (v2.51.2, one pod, 2Gi PVC, 7 day retention). It scrapes every pod in
+  the namespace that has the `prometheus.io/*` annotations, which covers both Spring
+  services, the Flink JobManager and the three TaskManagers. A second job reads pod
+  CPU and memory from the kubelet (cAdvisor) through the API server. Pod discovery
+  uses a namespaced Role. The cAdvisor job needs a read-only ClusterRole on nodes.
+* **Grafana** (10.4.2, one pod). The data source and the dashboards are provisioned
+  from ConfigMaps, so nothing is clicked together by hand and a restart loses nothing.
+
+| Dashboard | Shows |
+|---|---|
+| Stream Pipeline | Flink job state, slots, restarts, checkpoints, Kafka consume rate and lag, busy and back-pressure time, alerts per severity, end to end latency |
+| Stream Services | ingest request rate and publish latency, alert persist latency, JVM heap and CPU, Postgres pool |
+| Stream Cluster | replicas up per app, CPU and memory per pod |
+
+The dashboard JSON is in `base/monitoring/dashboards/`. Every query was run against
+the Prometheus on the local minikube cluster and returned data, except the two
+failure counters, which stay empty until something fails.
+
+This runtime reports only whole-pod cgroups for cAdvisor (`container=""`) and no pod
+network series, so the cluster dashboard uses pod totals and has no network panel.
+There is no kube-state-metrics, so replica counts come from `up`.
+
 ---
 
 ## Resource arithmetic
 
 ### `local` overlay - the budget that has to fit
 
-Target: total pod **requests** at or under **5 GiB memory and 2 CPU**, on a
+Target: total pod **requests** at or under **5.5 GiB memory and 2 CPU**, on a
 workstation with 16 cores and about 15 GiB free that is also running an IDE and a
 Jenkins container.
 
@@ -297,13 +333,16 @@ Jenkins container.
 | flink-taskmanager | 3 | 640Mi / 250m | 1920Mi / 750m | 1280Mi / 1 |
 | ingest-service | 2 | 384Mi / 100m | 768Mi / 200m | 640Mi / 500m |
 | alert-service | 2 | 448Mi / 100m | 896Mi / 200m | 768Mi / 500m |
-| **steady state** | | | **4864Mi / 1750m** | |
+| prometheus | 1 | 256Mi / 100m | 256Mi / 100m | 512Mi / 500m |
+| grafana | 1 | 128Mi / 50m | 128Mi / 50m | 256Mi / 300m |
+| **steady state** | | | **5248Mi / 1900m** | |
 | kafka-topic-init (runs once, then TTLs away) | 1 | 256Mi / 100m | 256Mi / 100m | 512Mi / 500m |
-| **peak, during bring-up** | | | **5120Mi / 1850m** | |
+| **peak, during bring-up** | | | **5504Mi / 2000m** | |
 
-`5120Mi = 5.00 GiB` and `1850m = 1.85 CPU`. Both inside the budget, with the peak
-sitting exactly on the memory ceiling for the few seconds the provisioning Job runs
-and 4.75 GiB thereafter.
+`5504Mi = 5.375 GiB` and `2000m = 2.0 CPU`. Adding Prometheus and Grafana (384Mi, 150m)
+pushed the original 5 GiB target over by 0.375 GiB at peak, so the memory target is
+now 5.5 GiB. The CPU peak sits exactly on 2 CPU for the few seconds the provisioning
+Job runs and is 1.9 CPU after that. Steady state is 5.125 GiB.
 
 Two notes on where the slack is:
 
@@ -324,10 +363,10 @@ Two notes on where the slack is:
 | ingest-service | `-XX:MaxRAMPercentage=75` -> ~480Mi heap | 640Mi | 160Mi non-heap |
 | alert-service | `-XX:MaxRAMPercentage=75` -> ~576Mi heap | 768Mi | 192Mi non-heap |
 
-Sum of limits: `1024 + 512 + 1024 + (3 × 1280) + (2 × 640) + (2 × 768) = 9216Mi = 9.00 GiB`.
+Sum of limits: `1024 + 512 + 1024 + (3 × 1280) + (2 × 640) + (2 × 768) + 512 + 256 = 9984Mi = 9.75 GiB`.
 That is the reason the recommended `--memory` is 10g rather than 8g.
 
-Storage: 2Gi (Kafka) + 2Gi (Postgres) + 1Gi (Flink state) = 5Gi against a 20g disk.
+Storage: 2Gi (Kafka) + 2Gi (Postgres) + 1Gi (Flink state) + 2Gi (Prometheus) = 7Gi against a 20g disk.
 
 ### `staging` overlay
 
@@ -339,13 +378,15 @@ Storage: 2Gi (Kafka) + 2Gi (Postgres) + 1Gi (Flink state) = 5Gi against a 20g di
 | flink-taskmanager | 3 | 2Gi / 500m | 6Gi / 1.5 |
 | ingest-service | 2 | 1Gi / 250m | 2Gi / 500m |
 | alert-service | 3 | 1Gi / 250m | 3Gi / 750m |
-| **steady state** | | | **20.00 GiB / 6.75 CPU** |
+| prometheus | 1 | 256Mi / 100m | 0.25 GiB / 100m |
+| grafana | 1 | 128Mi / 50m | 0.125 GiB / 50m |
+| **steady state** | | | **20.375 GiB / 6.90 CPU** |
 | kafka-topic-init (transient) | 1 | 256Mi / 100m | 0.25 GiB / 100m |
-| **peak, during bring-up** | | | **20.25 GiB / 6.85 CPU** |
+| **peak, during bring-up** | | | **20.625 GiB / 7.00 CPU** |
 
 Three worker nodes of 4 vCPU / 10 GiB each is the smallest shape that holds this with
 enough headroom for the anti-affinity rules to actually spread the brokers: 30 GiB and
-12 vCPU of raw capacity against 20.25 GiB and 6.85 CPU of requests leaves roughly a
+12 vCPU of raw capacity against 20.625 GiB and 7.00 CPU of requests leaves roughly a
 third of each node free for the kubelet, kube-system and burst.
 
 The Flink pods are memory-`Guaranteed` in staging (requests equal limits): their JVMs
@@ -435,6 +476,37 @@ consumer group, so 3 is the maximum useful replica count: a fourth would join th
 group, be assigned no partition, and idle. It would add query-API capacity but no
 consumption capacity - which is exactly the subtlety phase 3's HPA has to be reasoned
 about against, rather than scaling on CPU alone.
+
+### Autoscaling (HPA)
+
+Both API Deployments have a HorizontalPodAutoscaler (`base/*/hpa.yaml`). It reads CPU
+from `metrics-server`, which `minikube start --addons=metrics-server` enables, and
+compares it with the CPU *request*. The target is 70%, so on `local` an ingest-service
+pod above 70m (requests are 100m) triggers a scale up.
+
+| | min | max | Why |
+|---|---:|---:|---|
+| ingest-service, base and staging | 2 | 4 | stateless, scales freely |
+| ingest-service, local | 2 | 3 | trimmed by `patches/hpa-ingest-service.yaml` for the memory budget |
+| alert-service, base and local | 2 | 3 | 3 partitions, a 4th consumer would idle |
+| alert-service, staging | 3 | 3 | staging keeps one consumer per partition, so it does not scale down |
+
+Scale down waits 120 seconds of low CPU first, so a short dip does not remove a pod
+that a cold JVM then has to replace.
+
+At the maximum on `local`, requests rise by one ingest pod and one alert pod:
+`384Mi + 448Mi = 832Mi` and `100m + 100m = 200m`. Peak requests go from 5504Mi / 2000m to
+6336Mi / 2200m, which is 6.19 GiB and 2.2 CPU. That is above the 5.5 GiB / 2 CPU
+baseline target but inside the recommended `--memory=10g` and `--cpus=6`. The limits add
+`640Mi + 768Mi = 1408Mi`, so the worst case limit sum is 11392Mi. That is over 10g, but
+the pods actually use about 250 to 380Mi each, so the limits are not reached in practice.
+
+Kustomize's `replicas:` still sets the Deployment count on every `kubectl apply -k`,
+so a deploy resets the count to the base value and the HPA moves it again.
+
+Tested on the local minikube cluster: 16 parallel curl loops posting to the ingest
+NodePort pushed ingest-service CPU to about 495% of request and the HPA went from 2 to 3
+pods in about 40 seconds.
 
 ### Probe timings
 
@@ -545,11 +617,9 @@ is what the dissertation measures.
    controller is a cluster-level dependency that would have to be assumed rather than
    declared here.
 
-7. **No HPA and no Prometheus yet.** Both are phase 3. What is in place for them: every
-   workload has resource requests (which an HPA needs to compute utilisation),
-   `metrics-server` is enabled by the recommended `minikube start`, all four Services
-   carry a `monitoring: stream` label for a `ServiceMonitor` selector, and the Spring
-   and Flink pods carry Prometheus scrape annotations.
+7. **HPA scales on CPU only.** It covers ingest-service and alert-service. Scaling on
+   Kafka lag would need KEDA or a Prometheus adapter, which are not installed. The
+   Flink TaskManagers have no HPA, see the HPA section above.
 
 8. **`kubectl apply -k`, not Argo CD or Flux.** Phase 2's Jenkins pipeline calls
    `kustomize edit set image` against the overlay and then applies it. The `images:`
@@ -563,8 +633,8 @@ Everything here is validated statically. None of it has been applied to a cluste
 that is the operator's call.
 
 ```bash
-kubectl kustomize deploy/k8s/overlays/local       # renders 31 objects
-kubectl kustomize deploy/k8s/overlays/staging     # renders 34 objects
+kubectl kustomize deploy/k8s/overlays/local       # renders 48 objects
+kubectl kustomize deploy/k8s/overlays/staging     # renders 49 objects
 kubectl create --dry-run=client --validate=false -k deploy/k8s/overlays/local
 ```
 

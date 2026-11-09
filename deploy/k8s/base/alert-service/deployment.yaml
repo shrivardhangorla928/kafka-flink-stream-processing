@@ -11,8 +11,7 @@ spec:
   # replicas share one consumer group: one consumer per partition is the maximum
   # useful parallelism. A fourth replica would join the group, be assigned no
   # partition and idle - it would add API capacity but no consumption capacity,
-  # which is why the HPA in phase 3 has to be reasoned about against the partition
-  # count and not just against CPU.
+  # which is why hpa.yaml caps this Deployment at 3.
   replicas: 3
   strategy:
     type: RollingUpdate

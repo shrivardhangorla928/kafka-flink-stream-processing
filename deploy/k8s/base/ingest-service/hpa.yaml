@@ -1,0 +1,26 @@
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: ingest-service
+  labels:
+    app.kubernetes.io/name: ingest-service
+    app.kubernetes.io/component: api
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: ingest-service
+  minReplicas: 2
+  maxReplicas: 4
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          # Percent of the CPU request, so 70% of 100m is 70m per pod on local.
+          averageUtilization: 70
+  behavior:
+    scaleDown:
+      # Keeps a short spike from causing a scale down and a cold JVM start right after.
+      stabilizationWindowSeconds: 120

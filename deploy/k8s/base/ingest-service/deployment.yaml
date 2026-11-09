@@ -9,7 +9,7 @@ metadata:
 spec:
   # Two replicas is an availability floor, not a throughput number: the producer is
   # stateless and partition-keyed, so it scales horizontally without coordination.
-  # Phase 3 puts an HPA on this Deployment.
+  # hpa.yaml scales this Deployment on CPU.
   replicas: 2
   strategy:
     type: RollingUpdate

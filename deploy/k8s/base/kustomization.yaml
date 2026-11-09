@@ -13,6 +13,7 @@ resources:
   - flink
   - ingest-service
   - alert-service
+  - monitoring
 
 # includeSelectors is false on purpose: a label that lands in a Deployment or
 # StatefulSet selector becomes immutable, so a later overlay could never change it.

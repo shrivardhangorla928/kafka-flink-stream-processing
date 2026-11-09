@@ -3,12 +3,13 @@ kind: Kustomization
 
 # Workstation minikube: one node, one Kafka broker, everything shrunk to fit
 # alongside an IDE and a Jenkins container. Total pod requests are held at or
-# under 5 GiB / 2 CPU - the arithmetic is in deploy/k8s/README.md.
+# under 5.5 GiB / 2 CPU - the arithmetic is in deploy/k8s/README.md.
 namespace: stream
 
 resources:
   - ../../base
   - flink-ui-nodeport.yaml
+  - monitoring-nodeport.yaml
 
 # imagePullPolicy is IfNotPresent throughout the base, which is what this overlay
 # needs: the three stream/* images are built straight into minikube's Docker daemon
@@ -59,4 +60,5 @@ patches:
   - path: patches/flink-state-pvc.yaml
   - path: patches/ingest-service.yaml
   - path: patches/alert-service.yaml
+  - path: patches/hpa-ingest-service.yaml
   - path: patches/nodeport-services.yaml
