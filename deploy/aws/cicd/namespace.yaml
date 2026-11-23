@@ -1,0 +1,7 @@
+# The Docker daemon sidecar must be privileged, so this namespace cannot use the restricted profile.
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: cicd
+  labels:
+    pod-security.kubernetes.io/enforce: privileged

@@ -128,7 +128,7 @@ jobs:
                 }
               }
             }
-            scriptPath('Jenkinsfile')
+            scriptPath('${JENKINSFILE_PATH:-Jenkinsfile}')
             lightweight(false)
           }
         }

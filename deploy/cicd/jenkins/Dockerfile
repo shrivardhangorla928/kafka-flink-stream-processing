@@ -89,8 +89,15 @@ RUN set -eux; \
 
 # jq is used by the smoke-test stage to read the Flink REST API
 RUN apt-get update \
- && apt-get install -y --no-install-recommends jq \
+ && apt-get install -y --no-install-recommends jq python3 unzip \
  && rm -rf /var/lib/apt/lists/*
+
+RUN set -eux; \
+    curl -fsSL https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip -o /tmp/awscli.zip; \
+    unzip -q /tmp/awscli.zip -d /tmp; \
+    /tmp/aws/install; \
+    rm -rf /tmp/aws /tmp/awscli.zip; \
+    aws --version
 
 # ---------------------------------------------------------------------------
 # Plugins

@@ -1,0 +1,124 @@
+# The jenkins ServiceAccount is created by cicd-up.sh (eksctl adds the ECR role to it).
+# The jenkins-env secret holds the admin password and the Sonar token, also from cicd-up.sh.
+# cluster-admin is only acceptable on a short-lived demo cluster: the deploy applies a
+# ClusterRole, a StorageClass and a namespace.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: jenkins-cluster-admin
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: cluster-admin
+subjects:
+  - kind: ServiceAccount
+    name: jenkins
+    namespace: cicd
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: jenkins
+  namespace: cicd
+spec:
+  selector:
+    app: jenkins
+  ports:
+    - name: http
+      port: 8080
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: jenkins
+  namespace: cicd
+spec:
+  serviceName: jenkins
+  replicas: 1
+  selector:
+    matchLabels:
+      app: jenkins
+  template:
+    metadata:
+      labels:
+        app: jenkins
+    spec:
+      serviceAccountName: jenkins
+      securityContext:
+        fsGroup: 1000
+      containers:
+        - name: jenkins
+          image: ECR_REGISTRY/stream/jenkins:IMAGE_TAG
+          ports:
+            - name: http
+              containerPort: 8080
+          envFrom:
+            - secretRef:
+                name: jenkins-env
+          env:
+            - name: JENKINS_URL
+              value: http://jenkins.cicd.svc.cluster.local:8080/
+            - name: SONAR_HOST_URL
+              value: http://sonarqube.cicd.svc.cluster.local:9000
+            - name: GIT_REPO_URL
+              value: https://github.com/shrivardhangorla928/kafka-flink-stream-processing.git
+            - name: GIT_BRANCH
+              value: "*/develop"
+            - name: JENKINSFILE_PATH
+              value: Jenkinsfile.eks
+            - name: DOCKER_HOST
+              value: tcp://127.0.0.1:2375
+            - name: AWS_REGION
+              value: ap-south-1
+            - name: AWS_DEFAULT_REGION
+              value: ap-south-1
+          resources:
+            requests:
+              memory: 1536Mi
+              cpu: 500m
+            limits:
+              memory: 3Gi
+          startupProbe:
+            httpGet:
+              path: /login
+              port: http
+            periodSeconds: 10
+            failureThreshold: 30
+          readinessProbe:
+            httpGet:
+              path: /login
+              port: http
+            periodSeconds: 15
+          volumeMounts:
+            - name: jenkins-home
+              mountPath: /var/jenkins_home
+        # Docker daemon for the image builds. Listens on localhost only.
+        - name: dind
+          image: docker:27-dind
+          args: ["--host=tcp://127.0.0.1:2375", "--host=unix:///var/run/docker.sock"]
+          env:
+            - name: DOCKER_TLS_CERTDIR
+              value: ""
+          securityContext:
+            privileged: true
+          resources:
+            requests:
+              memory: 512Mi
+              cpu: 250m
+            limits:
+              memory: 2Gi
+          volumeMounts:
+            - name: docker-data
+              mountPath: /var/lib/docker
+      volumes:
+        - name: docker-data
+          emptyDir:
+            sizeLimit: 12Gi
+  volumeClaimTemplates:
+    - metadata:
+        name: jenkins-home
+      spec:
+        accessModes: ["ReadWriteOnce"]
+        resources:
+          requests:
+            storage: 10Gi

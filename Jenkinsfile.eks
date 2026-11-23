@@ -1,0 +1,191 @@
+// Build, test, analyse and deploy the stream processing services to EKS.
+// Runs inside the cluster: the docker daemon is a sidecar and ECR access comes from the pod's IAM role.
+
+pipeline {
+    agent any
+
+    options {
+        timestamps()
+        timeout(time: 45, unit: 'MINUTES')
+        buildDiscarder(logRotator(numToKeepStr: '30', artifactNumToKeepStr: '10'))
+        disableConcurrentBuilds()
+    }
+
+    environment {
+        // outside the workspace so cleanWs doesn't wipe the maven cache
+        MAVEN_REPO = '/var/jenkins_home/.m2/repository'
+        MAVEN_OPTS = '-Xmx1536m'
+
+        SONAR_PROJECT_KEY = 'stream-processing'
+
+        // new tag every build, otherwise k8s sees no change and skips the rollout
+        IMAGE_TAG     = "1.0.0-b${BUILD_NUMBER}"
+        K8S_NAMESPACE = 'stream'
+        K8S_OVERLAY   = 'deploy/k8s/overlays/eks'
+    }
+
+    stages {
+
+        stage('Checkout') {
+            steps {
+                script {
+                    def sha = sh(script: 'git rev-parse --short HEAD', returnStdout: true).trim()
+                    def branch = sh(script: 'git rev-parse --abbrev-ref HEAD', returnStdout: true).trim()
+                    def msg = sh(script: 'git log -1 --pretty=%s', returnStdout: true).trim()
+                    currentBuild.displayName = "#${BUILD_NUMBER} ${sha}"
+                    currentBuild.description = msg
+                    echo "branch=${branch} sha=${sha} imageTag=${IMAGE_TAG}"
+                }
+                sh 'java -version; mvn -v; docker version --format "client={{.Client.Version}} server={{.Server.Version}}"; kubectl version --client=true -o yaml | head -5; kustomize version'
+            }
+        }
+
+        stage('Build & Test') {
+            steps {
+                // verify, not test, so the JaCoCo report is generated
+                sh "mvn -B -ntp -Dmaven.repo.local=${MAVEN_REPO} clean verify"
+            }
+            post {
+                always {
+                    junit allowEmptyResults: false,
+                          testResults: '**/target/surefire-reports/TEST-*.xml,**/target/failsafe-reports/TEST-*.xml'
+                    recordCoverage(
+                        tools: [[parser: 'JACOCO', pattern: '**/target/site/jacoco/jacoco.xml']],
+                        sourceCodeRetention: 'EVERY_BUILD',
+                        sourceDirectories: [
+                            [path: 'common-model/src/main/java'],
+                            [path: 'ingest-service/src/main/java'],
+                            [path: 'flink-pipeline/src/main/java'],
+                            [path: 'alert-service/src/main/java']
+                        ]
+                    )
+                }
+            }
+        }
+
+        stage('SonarQube Analysis') {
+            steps {
+                withSonarQubeEnv('sonarqube') {
+                    sh """
+                        mvn -B -ntp -Dmaven.repo.local=${MAVEN_REPO} sonar:sonar \
+                          -Dsonar.projectKey=${SONAR_PROJECT_KEY} \
+                          -Dsonar.projectName='Kafka + Flink Stream Processing' \
+                          -Dsonar.projectVersion=${IMAGE_TAG} \
+                          -Dsonar.scm.revision=\$(git rev-parse HEAD)
+                    """
+                }
+            }
+        }
+
+        stage('Quality Gate') {
+            steps {
+                script {
+                    if (params.SKIP_QUALITY_GATE) {
+                        echo 'SKIP_QUALITY_GATE is set, not enforcing the gate.'
+                        return
+                    }
+                    timeout(time: 15, unit: 'MINUTES') {
+                        def qg = waitForQualityGate abortPipeline: false
+                        echo "Quality gate: ${qg.status}"
+                        if (qg.status != 'OK') {
+                            error "Quality gate failed with status ${qg.status}. " +
+                                  "See ${env.SONAR_HOST_URL ?: 'SonarQube'}/dashboard?id=${SONAR_PROJECT_KEY}"
+                        }
+                    }
+                }
+            }
+        }
+
+        stage('Container Images') {
+            steps {
+                sh '''
+                    set -eu
+                    REGISTRY="$(aws sts get-caller-identity --query Account --output text).dkr.ecr.$AWS_REGION.amazonaws.com"
+                    aws ecr get-login-password | docker login --username AWS --password-stdin "$REGISTRY"
+                    for pair in ingest:ingest-service alert:alert-service flinkjob:flink-pipeline; do
+                        target="${pair%%:*}"
+                        name="${pair##*:}"
+                        aws ecr describe-repositories --repository-names "stream/$name" >/dev/null 2>&1 \\
+                          || aws ecr create-repository --repository-name "stream/$name" >/dev/null
+                        echo "--- $REGISTRY/stream/$name:$IMAGE_TAG"
+                        docker build -f deploy/docker/Dockerfile --target "$target" -t "$REGISTRY/stream/$name:$IMAGE_TAG" .
+                        docker push "$REGISTRY/stream/$name:$IMAGE_TAG"
+                    done
+                '''
+            }
+        }
+
+        stage('Deploy to Kubernetes') {
+            when {
+                expression { return params.DEPLOY }
+            }
+            steps {
+                sh '''
+                    set -eu
+                    REGISTRY="$(aws sts get-caller-identity --query Account --output text).dkr.ecr.$AWS_REGION.amazonaws.com"
+                    kubectl get ns $K8S_NAMESPACE
+
+                    cd $K8S_OVERLAY
+                    kustomize edit set image stream/ingest-service=$REGISTRY/stream/ingest-service:$IMAGE_TAG
+                    kustomize edit set image stream/alert-service=$REGISTRY/stream/alert-service:$IMAGE_TAG
+                    kustomize edit set image stream/flink-pipeline=$REGISTRY/stream/flink-pipeline:$IMAGE_TAG
+                    cd - >/dev/null
+                    kubectl kustomize $K8S_OVERLAY | grep -E "^\\s+image:" | sort -u
+
+                    # a finished job can't be re-applied, so remove it first
+                    kubectl -n $K8S_NAMESPACE delete job kafka-topic-init --ignore-not-found
+                    kubectl apply -k $K8S_OVERLAY
+                '''
+                sh '''
+                    set -eu
+                    kubectl -n $K8S_NAMESPACE rollout status statefulset/kafka --timeout=300s
+                    kubectl -n $K8S_NAMESPACE rollout status statefulset/postgres --timeout=300s
+                    kubectl -n $K8S_NAMESPACE rollout status deployment/flink-jobmanager --timeout=300s
+                    kubectl -n $K8S_NAMESPACE rollout status deployment/flink-taskmanager --timeout=300s
+                    kubectl -n $K8S_NAMESPACE rollout status deployment/ingest-service --timeout=300s
+                    kubectl -n $K8S_NAMESPACE rollout status deployment/alert-service --timeout=300s
+                    kubectl -n $K8S_NAMESPACE get pods -o wide
+                '''
+            }
+        }
+
+        stage('Smoke Test') {
+            when {
+                expression { return params.DEPLOY }
+            }
+            steps {
+                sh 'deploy/aws/verify.sh'
+            }
+        }
+
+    }
+
+    post {
+        always {
+            script {
+                if (params.DEPLOY) {
+                    // keep pod logs and events, they're gone once the pods are replaced
+                    sh """
+                        mkdir -p diagnostics
+                        kubectl -n ${K8S_NAMESPACE} get all,pvc -o wide > diagnostics/resources.txt 2>&1 || true
+                        kubectl -n ${K8S_NAMESPACE} describe pods > diagnostics/describe-pods.txt 2>&1 || true
+                        kubectl -n ${K8S_NAMESPACE} get events --sort-by=.lastTimestamp > diagnostics/events.txt 2>&1 || true
+                        for d in ingest-service alert-service flink-jobmanager flink-taskmanager; do
+                            kubectl -n ${K8S_NAMESPACE} logs deploy/\$d --tail=400 --all-containers \
+                              > diagnostics/logs-\$d.txt 2>&1 || true
+                        done
+                    """
+                    archiveArtifacts artifacts: 'diagnostics/**', allowEmptyArchive: true
+                }
+            }
+            cleanWs(deleteDirs: true, notFailBuild: true,
+                    patterns: [[pattern: 'diagnostics/**', type: 'EXCLUDE']])
+        }
+        success {
+            echo "Deployed stream/*:${IMAGE_TAG} to ${K8S_NAMESPACE}."
+        }
+        failure {
+            echo "Build failed. Sonar results: /dashboard?id=${SONAR_PROJECT_KEY}"
+        }
+    }
+}

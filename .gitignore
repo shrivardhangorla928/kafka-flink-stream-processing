@@ -22,6 +22,7 @@ replay_pid*
 # Local-only overrides
 .env
 deploy/docker/.env
+deploy/aws/.secrets.env
 
 # Maven shade plugin byproduct (written outside target/)
 dependency-reduced-pom.xml

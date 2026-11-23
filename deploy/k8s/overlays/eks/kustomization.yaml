@@ -24,3 +24,4 @@ patches:
   - path: patches/flink-state-pvc.yaml
   - path: patches/taskmanager-affinity.yaml
   - path: patches/kafka-log-dir.yaml
+  - path: patches/delete-grafana-secret.yaml

@@ -24,7 +24,7 @@
 set -euo pipefail
 
 cd "$(dirname "$0")"
-ENV_FILE="../.env"
+ENV_FILE="${ENV_FILE:-../.env}"
 
 [[ -f "$ENV_FILE" ]] || { echo "FATAL: $ENV_FILE not found." >&2; exit 1; }
 # shellcheck disable=SC1090

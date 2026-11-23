@@ -1,0 +1,72 @@
+# Public addresses for the web UIs, open only to MY_IP (filled in by expose.sh).
+# The plain Service type LoadBalancer makes a Classic Load Balancer on EKS.
+apiVersion: v1
+kind: Service
+metadata:
+  name: grafana-public
+  namespace: stream
+spec:
+  type: LoadBalancer
+  loadBalancerSourceRanges: ["MY_IP/32"]
+  selector:
+    app.kubernetes.io/name: grafana
+  ports:
+    - port: 80
+      targetPort: 3000
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: prometheus-public
+  namespace: stream
+spec:
+  type: LoadBalancer
+  loadBalancerSourceRanges: ["MY_IP/32"]
+  selector:
+    app.kubernetes.io/name: prometheus
+  ports:
+    - port: 80
+      targetPort: 9090
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: flink-public
+  namespace: stream
+spec:
+  type: LoadBalancer
+  loadBalancerSourceRanges: ["MY_IP/32"]
+  selector:
+    app.kubernetes.io/name: flink
+    app.kubernetes.io/component: jobmanager
+  ports:
+    - port: 80
+      targetPort: 8081
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: jenkins-public
+  namespace: cicd
+spec:
+  type: LoadBalancer
+  loadBalancerSourceRanges: ["MY_IP/32"]
+  selector:
+    app: jenkins
+  ports:
+    - port: 80
+      targetPort: 8080
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: sonarqube-public
+  namespace: cicd
+spec:
+  type: LoadBalancer
+  loadBalancerSourceRanges: ["MY_IP/32"]
+  selector:
+    app: sonarqube
+  ports:
+    - port: 80
+      targetPort: 9000
