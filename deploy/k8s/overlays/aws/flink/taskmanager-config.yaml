@@ -10,9 +10,9 @@ taskmanager:
   bind-host: 0.0.0.0
   numberOfTaskSlots: 1
   memory:
-    # Container limit is 896Mi here; 700m leaves 196Mi of slack.
+    # Below about 1000m the fixed memory pieces do not fit and the pod crash-loops.
     process:
-      size: 700m
+      size: 1024m
   rpc:
     port: 6122
   data:

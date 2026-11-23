@@ -1,0 +1,34 @@
+apiVersion: eksctl.io/v1alpha5
+kind: ClusterConfig
+
+metadata:
+  name: stream-eks
+  region: ap-south-1
+
+availabilityZones: [ap-south-1a, ap-south-1b]
+
+iam:
+  withOIDC: true
+
+# No NAT gateway: nodes sit in public subnets, which saves about 600 INR per 5 days
+vpc:
+  nat:
+    gateway: Disable
+
+managedNodeGroups:
+  - name: workers
+    instanceType: t3.large
+    minSize: 2
+    maxSize: 2
+    desiredCapacity: 2
+    volumeSize: 30
+    volumeType: gp3
+
+addons:
+  - name: vpc-cni
+  - name: kube-proxy
+  - name: coredns
+  - name: aws-ebs-csi-driver
+    wellKnownPolicies:
+      ebsCSIController: true
+  - name: metrics-server

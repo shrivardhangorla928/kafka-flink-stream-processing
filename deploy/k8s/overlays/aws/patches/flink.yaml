@@ -7,12 +7,16 @@ spec:
     spec:
       containers:
         - name: jobmanager
+          env:
+            # the job reads this itself, so parallelism.default in config.yaml is not enough
+            - name: PARALLELISM
+              value: "1"
           resources:
             requests:
-              memory: 384Mi
+              memory: 512Mi
               cpu: 100m
             limits:
-              memory: 768Mi
+              memory: 1Gi
               cpu: "1"
 ---
 apiVersion: apps/v1
@@ -26,8 +30,8 @@ spec:
         - name: taskmanager
           resources:
             requests:
-              memory: 512Mi
+              memory: 640Mi
               cpu: 100m
             limits:
-              memory: 896Mi
+              memory: 1280Mi
               cpu: "1"

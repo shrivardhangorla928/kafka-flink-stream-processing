@@ -1,0 +1,9 @@
+# EBS cannot be ReadWriteMany. The TaskManager is pinned to the JobManager's
+# node (taskmanager-affinity.yaml), so one ReadWriteOnce disk is enough.
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: flink-state
+spec:
+  accessModes:
+    - ReadWriteOnce

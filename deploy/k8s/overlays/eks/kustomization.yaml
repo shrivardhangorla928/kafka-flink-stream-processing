@@ -1,0 +1,26 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+# The aws overlay on EKS: images come from ECR and the shared Flink volume is
+# an EBS disk. ECR_REGISTRY is replaced by deploy/aws/up.sh when it applies.
+namespace: stream
+
+resources:
+  - ../aws
+  - storageclass.yaml
+
+images:
+  - name: stream/ingest-service
+    newName: ECR_REGISTRY/stream/ingest-service
+    newTag: IMAGE_TAG
+  - name: stream/alert-service
+    newName: ECR_REGISTRY/stream/alert-service
+    newTag: IMAGE_TAG
+  - name: stream/flink-pipeline
+    newName: ECR_REGISTRY/stream/flink-pipeline
+    newTag: IMAGE_TAG
+
+patches:
+  - path: patches/flink-state-pvc.yaml
+  - path: patches/taskmanager-affinity.yaml
+  - path: patches/kafka-log-dir.yaml

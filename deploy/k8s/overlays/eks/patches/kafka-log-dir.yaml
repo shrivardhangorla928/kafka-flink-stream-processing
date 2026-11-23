@@ -1,0 +1,7 @@
+# ext4 on EBS puts lost+found at the volume root and Kafka refuses to start with it.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: kafka-config
+data:
+  KAFKA_LOG_DIRS: /var/lib/kafka/data/logs

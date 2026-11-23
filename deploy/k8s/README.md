@@ -120,6 +120,13 @@ kubectl -n stream delete pvc --all
 
 ---
 
+## Bring-up: AWS EKS
+
+The `aws` overlay is the small demo cluster. `overlays/eks` puts it on EKS with ECR images and EBS volumes.
+Use `deploy/aws/up.sh` rather than applying it by hand. See `deploy/aws/README.md`.
+
+---
+
 ## Bring-up: staging
 
 ```bash

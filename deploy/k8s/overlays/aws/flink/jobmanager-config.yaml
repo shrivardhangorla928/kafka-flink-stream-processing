@@ -7,10 +7,9 @@ jobmanager:
     address: flink-jobmanager
     port: 6123
   memory:
-    # Container limit is 768Mi here; 600m leaves 168Mi of slack for the JVM overhead
-    # Flink's process memory model does not account for.
+    # Below about 700m the JVM heap is tiny and the JobManager runs out of memory.
     process:
-      size: 600m
+      size: 768m
   execution:
     failover-strategy: region
 
