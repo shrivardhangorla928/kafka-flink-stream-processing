@@ -118,6 +118,9 @@ spec:
             # no mmap, so the node's vm.max_map_count does not matter
             - name: SONAR_SEARCH_JAVAADDITIONALOPTS
               value: "-Dnode.store.allow_mmap=false"
+            # Jenkins is a private cluster address, which Sonar refuses as a webhook target by default
+            - name: SONAR_VALIDATEWEBHOOKS
+              value: "false"
           resources:
             requests:
               memory: 2Gi

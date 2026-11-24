@@ -38,6 +38,7 @@ kubectl -n stream port-forward svc/flink-jobmanager 8081:8081
 They run in the `cicd` namespace, which allows privileged pods because the Jenkins pod has a Docker daemon sidecar for the image builds.
 The `jenkins` service account has an IAM role that can push to ECR and is bound to `cluster-admin`, which is only acceptable on a short-lived demo cluster.
 The job `stream-processing` builds branch `develop` using `Jenkinsfile.eks`, so the commit has to be pushed before Jenkins can see it.
+SonarQube runs with `SONAR_VALIDATEWEBHOOKS=false`, because it refuses to call Jenkins on a private cluster address otherwise and the quality gate step then waits until it times out.
 The first build needs `SKIP_QUALITY_GATE=true`. Run `deploy/cicd/sonarqube/quality-gate.sh` after it (set `ENV_FILE` and `SONAR_URL` as `cicd-up.sh` does), then build again with the gate on.
 
 ## The eks overlay
